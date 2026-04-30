@@ -1,3 +1,4 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
 
   List<ProductVariant> _variants = [];
   bool _loadingVariants = true;
+  int _lastCatalogVersion = 0;
   final List<BillItemDraft> _items = [];
   bool _saving = false;
   String? _error;
@@ -94,6 +96,17 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
       setState(() {
         _variants = list;
         _loadingVariants = false;
+        // If the user already has rows queued, refresh their rate/gst/label
+        // from the latest variant data so price edits in /products show up.
+        for (final item in _items) {
+          final fresh = list.where((v) => v.id == item.variantId);
+          if (fresh.isNotEmpty) {
+            final v = fresh.first;
+            item.rate = v.unitPrice;
+            item.gstRate = v.gstRate;
+            item.variantLabel = v.displayName;
+          }
+        }
       });
       _seedDefaultRowIfEmpty();
     } catch (e) {
@@ -133,7 +146,7 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
         variantId: v.id,
         variantLabel: v.displayName,
         quantity: 1,
-        rate: 2950, // owner-requested default
+        rate: v.unitPrice,   // pull live price from the variant
         gstRate: v.gstRate,
       ));
     });
@@ -309,6 +322,15 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reload variants whenever Products screen bumps the catalog version,
+    // so price/name edits show up here without a navigation reload.
+    final version = ref.watch(productCatalogVersionProvider);
+    if (version != _lastCatalogVersion) {
+      _lastCatalogVersion = version;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadVariants();
+      });
+    }
     if (_loadingVariants) {
       return const Center(child: CircularProgressIndicator());
     }

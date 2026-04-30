@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../core/api/api_client.dart';
 import '../models/customer.dart';
 
@@ -71,5 +73,18 @@ class CustomerRepo {
     final data = await _api.request('PATCH', '/customers/$id/active',
         query: {'active': active});
     return Customer.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// Bulk import customers from an Excel/CSV file.
+  /// Returns the import summary: { imported, skipped, errors: [...] }
+  Future<Map<String, dynamic>> importExcel({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final data = await _api.request('POST', '/customers/import', data: form);
+    return Map<String, dynamic>.from(data as Map);
   }
 }
