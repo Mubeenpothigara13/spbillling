@@ -1,3 +1,17 @@
+// New Bill — the main data-entry screen of the app.
+//
+// Flow:
+//   1. Owner searches a customer by mobile / name (typeahead). Unknown
+//      customers can be added inline via the `+ Add new customer` row.
+//   2. One or more item rows (variant + qty + rate, GST-inclusive).
+//      A default "15 kg cylinder x 1 @ 2950" row is pre-seeded to
+//      speed up the common case.
+//   3. Payment mode + amount paid + optional cheque details.
+//   4. A global Enter key handler saves the bill from anywhere on the
+//      screen so the billing clerk can stay on the keyboard.
+//
+// After save the screen resets (customer cleared, default row re-seeded)
+// ready for the next bill — no navigation away.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,6 +27,7 @@ import '../../data/models/customer.dart';
 import '../../data/models/product.dart';
 import '../customers/customer_form_dialog.dart';
 
+/// Route `/bills/new`.
 class NewBillScreen extends ConsumerStatefulWidget {
   const NewBillScreen({super.key});
 
@@ -53,6 +68,10 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     HardwareKeyboard.instance.addHandler(_handleGlobalKey);
   }
 
+  /// Global Enter-key handler registered on [HardwareKeyboard].
+  ///
+  /// Returning `true` consumes the event so focused `TextField`s don't
+  /// also see it. Disabled while a save is already in flight.
   bool _handleGlobalKey(KeyEvent event) {
     if (!mounted) return false;
     if (event is! KeyDownEvent) return false;
@@ -65,6 +84,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     return true; // consume so TextFields don't also process it
   }
 
+  /// Peeks the next bill number for display at the top of the form.
+  /// Silently swallows errors — it's a cosmetic hint, not critical.
   Future<void> _refreshNextBillNumber() async {
     try {
       final n = await ref.read(billRepoProvider).nextBillNumber(billDate: _billDate);
@@ -86,6 +107,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     super.dispose();
   }
 
+  /// Loads the sellable variants for the items dropdown. After load,
+  /// seeds the default "15 kg × 1 @ 2950" row if the items list is empty.
   Future<void> _loadVariants() async {
     try {
       final list = await ref
@@ -104,6 +127,9 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     }
   }
 
+  /// Picks the best match for the default first-row variant.
+  /// Priority: (1) name contains "15" + "kg"/"cylinder", (2) first
+  /// variant with "cylinder" in the label, (3) first variant overall.
   ProductVariant? _defaultFirstRowVariant() {
     if (_variants.isEmpty) return null;
     // Prefer any cylinder variant whose name mentions "15".
@@ -124,6 +150,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     return match;
   }
 
+  /// Inserts one pre-filled item row (15 kg cylinder × 1 @ 2950) if the
+  /// items list is empty. Owner-requested shortcut for the common case.
   void _seedDefaultRowIfEmpty() {
     if (_items.isNotEmpty) return;
     final v = _defaultFirstRowVariant();
@@ -139,6 +167,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     });
   }
 
+  /// Debounced customer typeahead. Only active customers are shown in
+  /// the dropdown; inactive ones must be re-activated first.
   void _search(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () async {
@@ -164,6 +194,9 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     });
   }
 
+  /// Opens the customer-add dialog with the current query pre-filled.
+  /// If the query looks like a mobile (10+ digits), it's used as mobile;
+  /// otherwise it's treated as the name.
   Future<void> _addNewCustomerInline() async {
     final query = _lastSearchQuery;
     final digits = query.replaceAll(RegExp(r'\D'), '');
@@ -187,6 +220,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     }
   }
 
+  /// Appends a blank item row using the first available variant's
+  /// default price / GST.
   void _addRow() {
     if (_variants.isEmpty) return;
     final v = _variants.first;
@@ -201,6 +236,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     });
   }
 
+  /// Updates an existing row when the user picks a different variant —
+  /// also refreshes the price and GST to the new variant's defaults.
   void _changeVariant(BillItemDraft draft, int newId) {
     final v = _variants.firstWhere((x) => x.id == newId);
     setState(() {
@@ -228,6 +265,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     return v.isReturnable ?? false;
   }
 
+  /// Lets the user back-date a bill (max: tomorrow). Refreshes the
+  /// "next bill number" hint because numbering is per fiscal year.
   Future<void> _pickDate() async {
     final d = await showDatePicker(
       context: context,
@@ -241,6 +280,9 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     }
   }
 
+  /// Called after a successful save — clears the customer + search box
+  /// but keeps items/payment so serial bills with similar items stay
+  /// fast. Focus snaps back to the customer search field.
   void _resetForNextBill() {
     // Keep items, payment values, notes — only clear the customer.
     setState(() {
@@ -255,6 +297,8 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
     _searchFocus.requestFocus();
   }
 
+  /// Validates and POSTs the bill. On success shows a snackbar with the
+  /// generated bill number and calls [_resetForNextBill].
   Future<void> _save() async {
     if (_selectedCustomer == null) {
       setState(() => _error = 'Pick a customer first');

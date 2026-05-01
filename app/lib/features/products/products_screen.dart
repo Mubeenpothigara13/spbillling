@@ -1,3 +1,8 @@
+// Product catalog screen — categories on the left, variants on the right.
+//
+// Admins can add categories, create variants, edit price/deposit/GST,
+// and toggle active status. Variants are loaded once (including inactive
+// rows) and filtered client-side via the Active/Inactive tab.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +13,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/models/product.dart';
 import '../auth/auth_controller.dart';
 
+/// Route `/products`.
 class ProductsScreen extends ConsumerStatefulWidget {
   const ProductsScreen({super.key});
 
@@ -30,6 +36,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _loadAll();
   }
 
+  /// Fetches categories, products, and variants in one go. Variants are
+  /// pulled with `includeInactive: true` so the Inactive tab has data to
+  /// show without a second round trip.
   Future<void> _loadAll() async {
     setState(() {
       _loading = true;
@@ -56,6 +65,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     }
   }
 
+  /// Prompts for a category name and creates it. Admin-only on the UI
+  /// side; backend enforces the role too.
   Future<void> _addCategory() async {
     final name = await _promptText(context, 'New category');
     if (name == null || name.trim().isEmpty) return;
@@ -67,6 +78,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     }
   }
 
+  /// Opens the variant add/edit dialog, scoped to the selected category.
   Future<void> _openVariantForm({ProductVariant? existing}) async {
     if (_selectedCategoryId == null) {
       _snack('Pick a category first');

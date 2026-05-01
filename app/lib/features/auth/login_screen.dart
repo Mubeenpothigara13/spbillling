@@ -1,9 +1,16 @@
+// Login screen — username + password form backed by AuthController.
+//
+// Keeps it deliberately minimal: a branded card, an inline error banner
+// if the last login attempt failed, and a button that disables itself
+// while the controller is busy.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/design_tokens.dart';
 import 'auth_controller.dart';
 
+/// Full-screen login page shown when [authControllerProvider] reports
+/// `authenticated == false`.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -24,6 +31,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// Validates the form and forwards credentials to the auth controller.
+  /// Navigation on success is handled by the router redirect.
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     await ref

@@ -1,5 +1,12 @@
+// Customer master record — mirrors `/api/customers` payload.
+//
+// Every customer belongs to exactly one Distributor Outlet (DO). The
+// backend returns the DO nested under `distributor_outlet` on list/detail
+// responses; we surface it here for display in the Customers screen.
 import 'distributor_outlet.dart';
 
+/// Coerces a dynamic JSON value to double; used because Postgres NUMERIC
+/// often arrives as a string.
 double _asDouble(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
@@ -7,6 +14,7 @@ double _asDouble(dynamic v) {
   return 0.0;
 }
 
+/// Coerces a dynamic JSON value to int.
 int _asInt(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
@@ -15,6 +23,11 @@ int _asInt(dynamic v) {
   return 0;
 }
 
+/// A customer of the gas distribution business.
+///
+/// Uniqueness is `(mobile, village)` on the backend. `balance` is the net
+/// money owed by the customer; `emptyPending` is the count of unreturned
+/// empty cylinders.
 class Customer {
   final int id;
   final String? consumerNumber;
@@ -85,6 +98,8 @@ class Customer {
         isDeleted: j['is_deleted'] as bool? ?? false,
       );
 
+  /// JSON body for `POST /api/customers`. Skips empty optional fields so
+  /// the backend's NULLable columns stay NULL rather than empty strings.
   Map<String, dynamic> toCreateJson() => {
         if (consumerNumber?.isNotEmpty == true) 'consumer_number': consumerNumber,
         'do_id': doId,
@@ -105,6 +120,8 @@ class Customer {
         if (notes?.isNotEmpty == true) 'notes': notes,
       };
 
+  /// JSON body for `PUT /api/customers/{id}`. Sends every field (including
+  /// nulls) so editable blanks in the form actually clear server-side data.
   Map<String, dynamic> toUpdateJson() => {
         'consumer_number': consumerNumber,
         'do_id': doId,

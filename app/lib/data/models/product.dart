@@ -1,3 +1,9 @@
+// Product catalog models: Category → Product → Variant.
+//
+// Variants are the sellable SKUs (e.g., "Commercial 15 kg") — prices,
+// GST, and deposits live on them, not on the parent product.
+
+/// Coerces JSON value to double (tolerates numeric strings).
 double _d(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
@@ -5,6 +11,7 @@ double _d(dynamic v) {
   return 0.0;
 }
 
+/// Coerces JSON value to int.
 int _i(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
@@ -13,6 +20,7 @@ int _i(dynamic v) {
   return 0;
 }
 
+/// Top-level catalog grouping (Cylinder, Regulator, Stove, Accessory…).
 class ProductCategory {
   final int id;
   final String name;
@@ -25,6 +33,10 @@ class ProductCategory {
       );
 }
 
+/// A sellable SKU — the actual thing that appears on a bill line.
+///
+/// `unitPrice` is GST-inclusive (see `BillItemDraft` for the math).
+/// `depositAmount` applies only to returnable items (cylinders).
 class ProductVariant {
   final int id;
   final int productId;
@@ -72,12 +84,16 @@ class ProductVariant {
         hsnCode: j['hsn_code'] as String?,
       );
 
+  /// "Product — Variant" label, e.g. "LPG Cylinder — Commercial 15 kg".
+  /// Falls back to just the variant name when the parent product isn't
+  /// populated (list endpoints may omit it to save bandwidth).
   String get displayName {
     final p = productName ?? '';
     return p.isEmpty ? name : '$p — $name';
   }
 }
 
+/// A product definition that groups one or more [ProductVariant]s.
 class Product {
   final int id;
   final int categoryId;

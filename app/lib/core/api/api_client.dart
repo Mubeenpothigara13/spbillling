@@ -1,3 +1,14 @@
+// Dio-based HTTP client for the SPBilling FastAPI backend.
+//
+// Responsibilities:
+//   * Build a Dio with the right base URL for the current platform.
+//   * Attach `Authorization: Bearer <jwt>` from AuthStorage on every
+//     request via an interceptor.
+//   * Unwrap the standard `{success, message, data}` envelope so callers
+//     just receive the `data` payload (or the full envelope when they
+//     need `meta` for pagination).
+//   * Translate non-2xx responses into ApiError carrying the backend's
+//     human-readable `detail` string.
 import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -12,11 +23,14 @@ class ApiError implements Exception {
   String toString() => 'ApiError($status): $message';
 }
 
+/// Thin wrapper around [Dio] specialized for the SPBilling API.
 class ApiClient {
   final Dio _dio;
 
   ApiClient._(this._dio);
 
+  /// Builds a configured client. The token from [storage] is attached to
+  /// every outgoing request by the request interceptor below.
   factory ApiClient(AuthStorage storage) {
     final baseUrl = _defaultBaseUrl();
     final dio = Dio(BaseOptions(

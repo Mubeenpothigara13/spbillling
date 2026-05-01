@@ -1,3 +1,8 @@
+// Distributor Outlet (DO) master screen.
+//
+// Admin-only CRUD for outlets — the retail sub-agencies each customer
+// is linked to. Includes debounced search, pagination, and inline
+// Edit / Toggle-active / Delete actions.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +15,7 @@ import '../../data/models/distributor_outlet.dart';
 import '../../data/repositories/do_repo.dart';
 import '../auth/auth_controller.dart';
 
+/// Route `/outlets`.
 class OutletsScreen extends ConsumerStatefulWidget {
   const OutletsScreen({super.key});
 
@@ -30,6 +36,7 @@ class _OutletsScreenState extends ConsumerState<OutletsScreen> {
     _load();
   }
 
+  /// Re-runs the DO list query with the current filter / page state.
   void _load() {
     _future = ref.read(doRepoProvider).list(page: _page, perPage: 25, q: _q);
     setState(() {});
@@ -42,6 +49,7 @@ class _OutletsScreenState extends ConsumerState<OutletsScreen> {
     super.dispose();
   }
 
+  /// Debounces search input to avoid flooding the backend.
   void _onSearchChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
@@ -51,6 +59,7 @@ class _OutletsScreenState extends ConsumerState<OutletsScreen> {
     });
   }
 
+  /// Opens the add/edit dialog. Reloads the list on successful save.
   Future<void> _openForm({DistributorOutlet? existing}) async {
     final saved = await showDialog<bool>(
       context: context,

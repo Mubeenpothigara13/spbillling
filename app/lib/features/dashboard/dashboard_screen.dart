@@ -1,3 +1,7 @@
+// Landing page after login. Shows today's KPIs and quick-action buttons.
+//
+// All the aggregated numbers come from a single `/reports/dashboard`
+// call so the page renders in one round trip.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +11,7 @@ import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
 
+/// Route `/dashboard`.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -23,12 +28,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _future = ref.read(billRepoProvider).dashboard();
   }
 
+  /// Re-fetches the aggregate payload. Bound to the "Refresh" button.
   void _refresh() {
     setState(() {
       _future = ref.read(billRepoProvider).dashboard();
     });
   }
 
+  /// Coerces a dynamic JSON value to a double (tolerates numeric strings).
   double _num(dynamic v) {
     if (v == null) return 0;
     if (v is num) return v.toDouble();

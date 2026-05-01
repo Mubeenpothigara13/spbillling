@@ -1,3 +1,11 @@
+// Models for bill drafts (in-progress bill being composed on screen) and
+// confirmed bills fetched from the backend.
+//
+// The key rule implemented here: rate is GST-inclusive. The UI shows
+// the total as `qty * rate`, and GST / base are derived by reverse math
+// so the printed grand total always equals what the user typed.
+
+/// Coerces dynamic JSON values (num, String, null) to a double.
 double _d(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
@@ -5,6 +13,7 @@ double _d(dynamic v) {
   return 0.0;
 }
 
+/// Coerces dynamic JSON values (num, String, null) to an int.
 int _i(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
@@ -13,6 +22,10 @@ int _i(dynamic v) {
   return 0;
 }
 
+/// One editable row in the New Bill screen before the bill is saved.
+///
+/// Holds a reference to the selected variant plus user-entered qty / rate /
+/// empty-returned count. Use the getters for the GST-inclusive line math.
 class BillItemDraft {
   int variantId;
   String variantLabel;
@@ -46,6 +59,11 @@ class BillItemDraft {
       };
 }
 
+/// Read-only bill as returned by the backend list/detail endpoints.
+///
+/// The backend flattens customer name/village into the JSON (either at the
+/// top level or inside a nested `customer` object); [fromJson] tolerates
+/// both shapes.
 class Bill {
   final int id;
   final String billNumber;

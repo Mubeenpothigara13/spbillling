@@ -1,8 +1,17 @@
+// Material 3 theme for the application, built on top of DT design tokens.
+//
+// Central place that converts the raw token values (colors, radii, type
+// scale) into Flutter ThemeData. Individual screens should pull styles
+// from Theme.of / DT rather than hard-coding colors or font sizes.
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'design_tokens.dart';
 
+/// Factory for the light [ThemeData] and a few one-off text styles.
 class AppTheme {
+  /// Builds the app's light theme. Uses Inter (Google Fonts) as the base
+  /// type and wires brand colors, input borders, and button shapes so
+  /// widgets that rely on [Theme.of] render consistently.
   static ThemeData light() {
     final base = ThemeData.light(useMaterial3: true);
     final text = GoogleFonts.interTextTheme(base.textTheme).apply(
@@ -101,6 +110,8 @@ class AppTheme {
     );
   }
 
+  /// JetBrains Mono style — used for bill numbers, amounts, and SKUs where
+  /// tabular digits improve readability in dense tables.
   static TextStyle mono({double size = 12, FontWeight weight = FontWeight.w400, Color? color}) =>
       GoogleFonts.jetBrainsMono(fontSize: size, fontWeight: weight, color: color ?? DT.text);
 }

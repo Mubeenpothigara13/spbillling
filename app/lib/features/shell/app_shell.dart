@@ -1,3 +1,8 @@
+// Application shell: sidebar + top bar + page content.
+//
+// Mounted by the ShellRoute so it survives across navigations between
+// dashboard/customers/products/etc. Highlights the active sidebar
+// entry by longest-prefix match against the current route.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +11,7 @@ import '../../core/format/inr.dart';
 import '../../core/theme/design_tokens.dart';
 import '../auth/auth_controller.dart';
 
+/// One row in the sidebar.
 class _NavEntry {
   final String title;
   final IconData icon;
@@ -22,6 +28,7 @@ const _entries = [
   _NavEntry('New Bill', Icons.receipt_long_outlined, '/bills/new'),
 ];
 
+/// Frames the current page with the persistent sidebar and top bar.
 class AppShell extends ConsumerWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
@@ -53,6 +60,10 @@ class AppShell extends ConsumerWidget {
   }
 }
 
+/// True if [entryPath] is the most specific match for [currentPath].
+///
+/// Needed because `/bills/new` would otherwise also light up the `/bills`
+/// entry — we only highlight the longest prefix.
 bool _isActive(String entryPath, String currentPath) {
   if (currentPath == entryPath) return true;
   if (!currentPath.startsWith('${entryPath}/')) return false;

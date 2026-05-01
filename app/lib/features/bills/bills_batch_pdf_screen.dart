@@ -1,3 +1,8 @@
+// 9-up batch print preview — 9 bills per A4 page, used by admins to
+// print a day's or a date-range's bills in one go.
+//
+// Fetches the PDF from `/api/bills/print/batch?from=&to=&format=9up`
+// and displays it with the standard `printing` preview.
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -8,6 +13,7 @@ import 'package:printing/printing.dart';
 import '../../core/providers.dart';
 import '../../core/theme/design_tokens.dart';
 
+/// Route `/bills/batch-print?from=&to=`.
 class BillsBatchPdfScreen extends ConsumerStatefulWidget {
   final DateTime fromDate;
   final DateTime toDate;
@@ -31,6 +37,7 @@ class _BillsBatchPdfScreenState extends ConsumerState<BillsBatchPdfScreen> {
     _future = _load();
   }
 
+  /// Downloads the 9-up PDF for the selected date range.
   Future<Uint8List> _load() async {
     final bytes = await ref.read(billRepoProvider).fetchBatchPdfBytes(
           fromDate: widget.fromDate,

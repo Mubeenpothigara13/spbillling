@@ -1,4 +1,10 @@
-import 'dart:async';
+// Customers list screen with search, pagination, and inline actions.
+//
+// Features:
+//   * debounced search (300 ms) by name / mobile / village;
+//   * status filter (active / inactive / all);
+//   * per-row Edit, Toggle active, Delete (admin only for toggle+delete);
+//   * "+ New customer" button opens CustomerFormDialog.import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +18,7 @@ import '../../data/repositories/customer_repo.dart';
 import '../auth/auth_controller.dart';
 import 'customer_form_dialog.dart';
 
+/// Route `/customers`.
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
 
@@ -33,6 +40,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     _load();
   }
 
+  /// Re-runs the customer list query with the current filter state.
   void _load() {
     _future = ref.read(customerRepoProvider).list(
         page: _page, perPage: 25, q: _q, status: _statusFilter);
@@ -46,6 +54,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.dispose();
   }
 
+  /// Debounces keystrokes so we don't hit the backend on every character.
   void _onSearchChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
@@ -55,6 +64,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     });
   }
 
+  /// Opens the customer form — `existing == null` creates, otherwise edits.
+  /// Reloads the list if the dialog returned a saved customer.
   Future<void> _openForm({Customer? existing}) async {
     final saved = await showDialog<Customer?>(
       context: context,
@@ -63,6 +74,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     if (saved != null) _load();
   }
 
+  /// Flips `active`/`inactive` and reloads. Errors surface as a snackbar.
   Future<void> _toggleActive(Customer c) async {
     try {
       await ref
@@ -78,6 +90,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     }
   }
 
+  /// Confirms and soft-deletes the customer. Backend returns an error if
+  /// the row still has active bills; that error bubbles up as a snackbar.
   Future<void> _delete(Customer c) async {
     final confirm = await showDialog<bool>(
       context: context,

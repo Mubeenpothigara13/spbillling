@@ -1,3 +1,9 @@
+// Data models for the currently-authenticated user.
+//
+// `AppUser` mirrors the `/api/auth/me` payload; `LoginResponse` mirrors
+// the JWT issued by `/api/auth/login`.
+
+/// Represents a logged-in user as returned by the backend.
 class AppUser {
   final int id;
   final String username;
@@ -22,6 +28,10 @@ class AppUser {
       );
 }
 
+/// Payload from a successful `POST /api/auth/login` call.
+///
+/// Holds the JWT bearer token plus the minimum display info so the UI can
+/// greet the user without a follow-up `/me` call.
 class LoginResponse {
   final String accessToken;
   final String tokenType;

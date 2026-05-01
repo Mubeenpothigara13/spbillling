@@ -1,3 +1,8 @@
+// Full-screen PDF preview for a single saved bill.
+//
+// Fetches the raw PDF bytes from `/api/bills/{id}/pdf` and hands them
+// to the `printing` package's PdfPreview which provides built-in
+// zoom / print / save-as controls.
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -8,6 +13,7 @@ import 'package:printing/printing.dart';
 import '../../core/providers.dart';
 import '../../core/theme/design_tokens.dart';
 
+/// Route `/bills/:id/pdf`. Shows the rendered invoice for [billId].
 class BillPdfScreen extends ConsumerStatefulWidget {
   final int billId;
   const BillPdfScreen({super.key, required this.billId});
@@ -25,6 +31,7 @@ class _BillPdfScreenState extends ConsumerState<BillPdfScreen> {
     _future = _load();
   }
 
+  /// Downloads the PDF bytes from the backend.
   Future<Uint8List> _load() async {
     final bytes = await ref
         .read(billRepoProvider)

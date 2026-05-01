@@ -1,3 +1,12 @@
+// Modal form for creating or editing a customer.
+//
+// Same dialog handles both flows:
+//   * Create — `existing == null`. Optional prefillName / prefillMobile
+//     come from the New Bill screen's "+ Add new customer" shortcut.
+//   * Edit — `existing != null`. Fields are pre-populated from the model.
+//
+// The DO (Distributor Outlet) picker is a typeahead backed by the live
+// `/distributor-outlets/search` endpoint.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +15,8 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/models/customer.dart';
 import '../../data/models/distributor_outlet.dart';
 
+/// Dialog widget — `showDialog<Customer?>` returns the saved row, or null
+/// if the user cancelled.
 class CustomerFormDialog extends ConsumerStatefulWidget {
   final Customer? existing;
   final String? prefillName;

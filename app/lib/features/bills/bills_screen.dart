@@ -1,3 +1,14 @@
+// Bills list screen — the admin's gateway to old invoices.
+//
+// Supports:
+//   * date-range filter (default: current month);
+//   * bill-number range filter (accepts partial inputs like "1" or
+//     "0005" and expands them to the full fiscal-year-prefixed form
+//     before hitting the backend — see _normalizeBillNumber);
+//   * pagination;
+//   * per-row "View PDF" action;
+//   * admin-only "Print filtered (9-up)" button that opens the
+//     batch PDF preview.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +20,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../data/repositories/bill_repo.dart';
 import '../auth/auth_controller.dart';
 
+/// Route `/bills`. Lives inside the shell.
 class BillsScreen extends ConsumerStatefulWidget {
   const BillsScreen({super.key});
 
@@ -41,12 +53,24 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
     super.dispose();
   }
 
+  /// Indian fiscal-year prefix for a given date: `YY-YY` (e.g. `26-27`
+  /// for any date between 2026-04-01 and 2027-03-31). The backend uses
+  /// this in the `BILL/{YY}-{YY}/NNNN` numbering.
   static String _fyPrefix(DateTime d) {
     final start = d.month >= 4 ? d.year % 100 : (d.year - 1) % 100;
     final end = d.month >= 4 ? (d.year + 1) % 100 : d.year % 100;
     return '${start.toString().padLeft(2, '0')}-${end.toString().padLeft(2, '0')}';
   }
 
+  /// Expands a user-typed partial bill number into the canonical form the
+  /// backend can compare lexicographically.
+  ///
+  ///   "1"        → "BILL/26-27/0001"
+  ///   "0005"     → "BILL/26-27/0005"
+  ///   "BILL/26-27/7" → "BILL/26-27/0007"
+  ///
+  /// Falls back to the raw (uppercased) input for unknown formats so
+  /// power users can still paste exact numbers.
   String _normalizeBillNumber(String raw, DateTime refDate) {
     final v = raw.trim().toUpperCase();
     if (v.isEmpty) return '';
@@ -61,6 +85,7 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
     return v;
   }
 
+  /// Fires the backend query based on the current filter state.
   void _load() {
     final fromRef = _fromDate ?? DateTime.now();
     final toRef = _toDate ?? DateTime.now();
@@ -75,6 +100,7 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
     setState(() {});
   }
 
+  /// Shows the date picker and updates either the `from` or `to` bound.
   Future<void> _pick({required bool from}) async {
     final initial = (from ? _fromDate : _toDate) ?? DateTime.now();
     final d = await showDatePicker(
@@ -94,6 +120,7 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
     }
   }
 
+  /// Opens the 9-up batch print preview. Admin-only.
   void _printBatch() {
     if (_fromDate == null || _toDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
