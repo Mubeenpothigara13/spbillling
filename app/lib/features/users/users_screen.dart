@@ -31,7 +31,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
   }
 
   void _load() {
-    _future = ref.read(userRepoProvider).list(perPage: 200);
+    _future = ref.read(userRepoProvider).list(perPage: 100);
     setState(() {});
   }
 
@@ -220,6 +220,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   late String _role;
   late bool _isActive;
   DistributorOutlet? _do;
+  bool _doLoading = false;
   bool _saving = false;
   String? _error;
 
@@ -234,9 +235,12 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     _role = e?.role ?? 'billing_staff';
     _isActive = e?.isActive ?? true;
     if (e?.doId != null) {
-      // Best-effort label until the DOTypeahead's own list resolves it.
-      _do = DistributorOutlet(
-          id: e!.doId!, code: 'DO #${e.doId}', ownerName: '', location: '', isActive: true);
+      _doLoading = true;
+      ref.read(doRepoProvider).get(e!.doId!).then((d) {
+        if (mounted) setState(() { _do = d; _doLoading = false; });
+      }).catchError((_) {
+        if (mounted) setState(() => _doLoading = false);
+      });
     }
   }
 
@@ -354,12 +358,29 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   onChanged: (v) => setState(() => _role = v ?? _role),
                 ),
                 const SizedBox(height: DT.s12),
-                DOTypeahead(
-                  key: ValueKey('user-do-${_do?.id ?? 'none'}'),
-                  initial: _do,
-                  label: 'Distributor Outlet (leave blank = S.P. Gas login)',
-                  onChanged: (v) => setState(() => _do = v),
-                ),
+                if (_doLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: DT.s8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: DT.s8),
+                        Text('Loading current outlet…',
+                            style: TextStyle(color: DT.text2, fontSize: DT.fsSm)),
+                      ],
+                    ),
+                  )
+                else
+                  DOTypeahead(
+                    key: ValueKey('user-do-${_do?.id ?? 'none'}'),
+                    initial: _do,
+                    required: false,
+                    label: 'Distributor Outlet (leave blank = S.P. Gas login)',
+                    onChanged: (v) => setState(() => _do = v),
+                  ),
                 if (isEdit) ...[
                   const SizedBox(height: DT.s12),
                   SwitchListTile(
@@ -379,7 +400,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                     ),
                     const SizedBox(width: DT.s8),
                     ElevatedButton(
-                      onPressed: _saving ? null : _save,
+                      onPressed: (_saving || _doLoading) ? null : _save,
                       child: _saving
                           ? const SizedBox(
                               width: 14,

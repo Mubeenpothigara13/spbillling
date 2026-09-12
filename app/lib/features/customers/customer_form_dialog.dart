@@ -308,12 +308,17 @@ class DOTypeahead extends ConsumerStatefulWidget {
   final DistributorOutlet? initial;
   final ValueChanged<DistributorOutlet?> onChanged;
   final String label;
+  // Customers must always belong to a DO; some other uses (e.g. picking an
+  // optional DO for a user login, or a report filter) allow leaving it
+  // blank, so this is opt-out rather than opt-in.
+  final bool required;
 
   const DOTypeahead({
     super.key,
     this.initial,
     required this.onChanged,
     this.label = 'Distributor Outlet (DO) *',
+    this.required = true,
   });
 
   @override
@@ -415,7 +420,8 @@ class _DOTypeaheadState extends ConsumerState<DOTypeahead> {
             }
             setState(() => _showList = true);
           },
-          validator: (_) => _selected == null ? 'Required' : null,
+          validator: (_) =>
+              (widget.required && _selected == null) ? 'Required' : null,
         ),
         if (_showList && _loaded)
           Container(
