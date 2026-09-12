@@ -19,6 +19,19 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "*"
 
+    @property
+    def database_url_normalized(self) -> str:
+        """Hosted providers (Render, Heroku-style) hand out a plain
+        "postgres://" or "postgresql://" URL — normalize to the psycopg3
+        driver we depend on so a copy-pasted connection string works
+        without hand-editing it first."""
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+
 
 @lru_cache
 def get_settings() -> Settings:

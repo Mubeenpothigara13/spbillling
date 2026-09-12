@@ -1,3 +1,9 @@
+databases:
+  - name: spgas-billing-db
+    plan: free
+    databaseName: spgasbill
+    user: spgasbill
+
 services:
   - type: web
     name: spgas-billing-api
@@ -8,7 +14,9 @@ services:
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: spgas-billing-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -24,4 +32,4 @@ services:
       - key: BILL_CODE_DEFAULT
         value: BILL
       - key: CORS_ORIGINS
-        sync: false
+        value: "*"
