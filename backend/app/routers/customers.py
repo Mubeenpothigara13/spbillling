@@ -13,7 +13,7 @@ from app.schemas.customer import (
     CustomerCreate, CustomerImportResult, CustomerOut, CustomerSearchResult, CustomerUpdate,
 )
 from app.services import customer_service
-from app.utils.auth import get_current_user, require_admin, require_staff
+from app.utils.auth import get_current_user, require_global_admin, require_staff
 from app.utils.pagination import paginate
 from app.utils.scope import resolve_do_filter
 
@@ -92,7 +92,7 @@ def update_customer(
 def delete_customer(
     customer_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_global_admin),
 ):
     customer_service.soft_delete_customer(db, customer_id, user.id, user=user)
     return APIResponse(message="Customer deleted")
@@ -102,7 +102,7 @@ def delete_customer(
 def bulk_delete_customers(
     ids: list[int] = Body(..., embed=True, min_length=1),
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_global_admin),
 ):
     result = customer_service.bulk_soft_delete_customers(db, ids, user.id, user=user)
     return APIResponse(
@@ -116,7 +116,7 @@ def set_customer_active(
     customer_id: int,
     active: bool = Query(...),
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_global_admin),
 ):
     cust = customer_service.set_customer_active(db, customer_id, active, user.id, user=user)
     return APIResponse(data=CustomerOut.model_validate(cust))

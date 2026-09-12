@@ -12,7 +12,7 @@ from app.schemas.payment import (
     ChequeOut, ChequeStatusUpdate, PaymentCreate, PaymentOut, PaymentUpdate,
 )
 from app.services import payment_service
-from app.utils.auth import get_current_user, require_admin, require_staff
+from app.utils.auth import get_current_user, require_global_admin, require_staff
 from app.utils.pagination import paginate
 from app.utils.scope import resolve_do_filter
 
@@ -58,6 +58,6 @@ def update_payment(payment_id: int, payload: PaymentUpdate,
 
 @router.delete("/{payment_id}", response_model=APIResponse)
 def delete_payment(payment_id: int, db: Session = Depends(get_db),
-                   user: User = Depends(require_admin)):
+                   user: User = Depends(require_global_admin)):
     payment_service.delete_payment(db, payment_id, user.id, user=user)
     return APIResponse(message="Payment deleted")

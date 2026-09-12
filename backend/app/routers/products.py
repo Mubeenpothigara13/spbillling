@@ -12,7 +12,7 @@ from app.schemas.product import (
     VariantCreate, VariantOut, VariantUpdate,
 )
 from app.services import product_service
-from app.utils.auth import get_current_user, require_global_admin
+from app.utils.auth import get_current_user, require_global_admin, require_staff
 from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -31,7 +31,7 @@ def list_categories(
 
 @router.post("/categories", response_model=APIResponse[CategoryOut])
 def create_category(payload: CategoryCreate, db: Session = Depends(get_db),
-                    user: User = Depends(require_global_admin)):
+                    user: User = Depends(require_staff)):
     cat = product_service.create_category(db, payload, user.id)
     return APIResponse(data=CategoryOut.model_validate(cat), message="Category created")
 
@@ -75,7 +75,7 @@ def get_product(product_id: int, db: Session = Depends(get_db),
 
 @router.post("", response_model=APIResponse[ProductOut])
 def create_product(payload: ProductCreate, db: Session = Depends(get_db),
-                   user: User = Depends(require_global_admin)):
+                   user: User = Depends(require_staff)):
     p = product_service.create_product(db, payload, user.id)
     return APIResponse(data=ProductOut.model_validate(p), message="Product created")
 
@@ -110,7 +110,7 @@ def list_variants(
 
 @router.post("/variants", response_model=APIResponse[VariantOut])
 def create_variant(payload: VariantCreate, db: Session = Depends(get_db),
-                   user: User = Depends(require_global_admin)):
+                   user: User = Depends(require_staff)):
     v = product_service.create_variant(db, payload, user.id)
     return APIResponse(data=VariantOut.model_validate(v), message="Variant created")
 

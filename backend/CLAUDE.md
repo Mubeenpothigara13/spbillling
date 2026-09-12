@@ -60,17 +60,27 @@ backend/
 | GET | `/api/customers/search?q=` | Autocomplete by name/mobile | any |
 | GET | `/api/customers/{id}` | Detail | any |
 | POST / PUT | `/api/customers[, /{id}]` | Create / update | staff+ |
-| DELETE | `/api/customers/{id}` | Soft-delete | admin |
+| DELETE | `/api/customers/{id}` | Soft-delete | **global admin** |
+| POST | `/api/customers/bulk-delete` | Bulk soft-delete | **global admin** |
+| PATCH | `/api/customers/{id}/active` | Activate/deactivate | **global admin** |
 | POST | `/api/customers/import` | Bulk Excel import | staff+ |
 | GET | `/api/customers/export/excel` | Export Excel | any |
 
 ### Products · `routers/products.py` → `services/product_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| CRUD | `/api/products/categories[, /{id}]` | Category master | **global admin** for mutations, any for GET |
-| CRUD | `/api/products[, /{id}]` | Product master | **global admin** for mutations, any for GET |
+| POST | `/api/products/categories` | Create category | staff+ (any DO can add to the shared catalog) |
+| PUT / DELETE | `/api/products/categories/{id}` | Edit/deactivate category | **global admin** |
+| POST | `/api/products` | Create product | staff+ |
+| PUT / DELETE | `/api/products/{id}` | Edit/deactivate product | **global admin** |
 | GET  | `/api/products/variants/list` | All variants paginated | any |
-| CRUD | `/api/products/variants[, /{id}]` | Variant master (price, stock, GST, deposit) | **global admin** for mutations, any for GET |
+| POST | `/api/products/variants` | Create variant (price, GST, stock) | staff+ |
+| PUT / DELETE | `/api/products/variants/{id}` | Edit/deactivate variant | **global admin** |
+
+Note: the product catalog is **not** DO-scoped — it's one shared list every
+DO bills against. Any staff+ login (including a DO-scoped one) can add a
+new category/product/variant, but only S.P. Gas can edit or deactivate an
+existing entry, since that could affect every other DO's pricing too.
 
 ### Bills · `routers/bills.py` → `services/billing_service.py` + `services/pdf_service.py`
 | Method | Path | Purpose | Role |
@@ -78,7 +88,8 @@ backend/
 | GET | `/api/bills` | List (by customer / date / status) | any |
 | POST / PUT | `/api/bills[, /{id}]` | Create / edit — runs GST, empty-bottle, stock, customer-balance updates | staff+ |
 | GET | `/api/bills/{id}` | Detail with items | any |
-| DELETE | `/api/bills/{id}` | Hard-delete, DO-scoped (reverses balance/stock/empty, frees the bill #) | admin |
+| DELETE | `/api/bills/{id}` | Hard-delete (reverses balance/stock/empty, frees the bill #) | **global admin** |
+| POST | `/api/bills/bulk-delete` | Bulk hard-delete | **global admin** |
 | GET | `/api/bills/{id}/pdf` | Single A4 PDF | any |
 | GET | `/api/bills/print/batch?from=&to=&format=9up` | Batch 9-up or single | any |
 | GET | `/api/bills/customer/{id}/ledger` | Full customer account ledger | any |
@@ -89,7 +100,7 @@ backend/
 |---|---|---|---|
 | GET / POST | `/api/payments` | List / record standalone receipt | staff+ |
 | GET / PUT | `/api/payments/{id}` | Detail / update | staff+ |
-| DELETE | `/api/payments/{id}` | Delete | admin |
+| DELETE | `/api/payments/{id}` | Delete | **global admin** |
 
 ### Cheques · `routers/cheques.py` → `services/payment_service.py`
 | Method | Path | Purpose | Role |
@@ -161,7 +172,8 @@ backend/
 - Password hashed via `passlib[bcrypt]` (bcrypt pinned `<5.0` — passlib compat).
 - Roles: `admin` · `billing_staff` · `viewer`.
 - Guards (in `app/utils/auth.py`): `get_current_user` (any), `require_staff` (admin+staff), `require_admin` (admin — DO-scoped or global), `require_global_admin` (admin AND `do_id is None`, i.e. S.P. Gas itself). Apply via `Depends()` in the router signature.
-- **Multi-tenant DO scoping** (`app/utils/scope.py`): `User.do_id` is `NULL` for a global S.P. Gas login (sees/manages every DO) or set to lock a login to one Distributor Outlet. `enforce_do_scope(user, entity_do_id)` 404s a DO-scoped user reaching another DO's row; `resolve_do_filter(user, requested_do_id)` pins list/report filters to the caller's own DO. Applied throughout customers/bills/payments/cheques/reports. Use `require_global_admin` (not `require_admin`) for anything that isn't naturally DO-scoped — managing the DO directory itself, users, the shared product catalog, settings, audit logs — so a DO's own admin login can never reach another DO's data or company-wide config.
+- **Multi-tenant DO scoping** (`app/utils/scope.py`): `User.do_id` is `NULL` for a global S.P. Gas login (sees/manages every DO) or set to lock a login to one Distributor Outlet. `enforce_do_scope(user, entity_do_id)` 404s a DO-scoped user reaching another DO's row; `resolve_do_filter(user, requested_do_id)` pins list/report filters to the caller's own DO. Applied throughout customers/bills/payments/cheques/reports.
+- **DO logins are intentionally capped below "admin", even if their `role` is `admin`.** A DO-scoped login (any role) can create/edit bills, customers, and the shared product catalog (`require_staff` — day-to-day billing work) but is **never** allowed to delete/deactivate a customer, delete a bill, delete a payment, manage other DOs, manage users, edit the product catalog, change settings, view audit logs, or reset bills — those all require `require_global_admin` (admin **and** `do_id is None`), regardless of the DO login's own role. So `role=admin` on a DO-scoped user only means "no `viewer` read-only restriction" — it does not grant admin-only actions. Use `require_global_admin` (not `require_admin`) for anything destructive or company-wide; use `require_staff` for routine per-DO billing work.
 - **Default admin (from `scripts/seed.py`):** `admin` / `admin123` — rotate before production.
 
 ---
