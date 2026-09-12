@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: spgas-billing-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt && alembic upgrade head && python -m scripts.seed"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "10080"
+      - key: APP_NAME
+        value: SPBilling API
+      - key: DEBUG
+        value: "False"
+      - key: API_PREFIX
+        value: /api
+      - key: BILL_CODE_DEFAULT
+        value: BILL
+      - key: CORS_ORIGINS
+        sync: false

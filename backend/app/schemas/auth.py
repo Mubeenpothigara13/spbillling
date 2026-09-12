@@ -16,6 +16,8 @@ class TokenResponse(BaseModel):
     role: UserRole
     user_id: int
     full_name: str
+    do_id: Optional[int] = None
+    do_code: Optional[str] = None
 
 
 class CurrentUser(BaseModel):
@@ -25,3 +27,5 @@ class CurrentUser(BaseModel):
     role: UserRole
     email: Optional[str] = None
     is_active: bool
+    do_id: Optional[int] = None
+    do_code: Optional[str] = None

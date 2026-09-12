@@ -14,42 +14,6 @@ import '../../data/models/customer.dart';
 import '../../data/models/product.dart';
 import '../customers/customer_form_dialog.dart';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /// Route `/bills/new`.
 class NewBillScreen extends ConsumerStatefulWidget {
   const NewBillScreen({super.key});

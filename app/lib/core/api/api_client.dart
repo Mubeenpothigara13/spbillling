@@ -55,7 +55,15 @@ class ApiClient {
 
   static String _defaultBaseUrl() {
     // Android emulator remaps host loopback to 10.0.2.2
-    if (!kIsWeb && Platform.isAndroid) return 'http://10.0.2.2:8001/api';
+  const configuredUrl = String.fromEnvironment('API_URL');
+
+  if (configuredUrl.isNotEmpty) {
+    return configuredUrl;
+  }
+
+    if (!kIsWeb && Platform.isAndroid) {
+    return 'http://10.0.2.2:8001/api';
+    }
     return 'http://localhost:8001/api';
   }
 

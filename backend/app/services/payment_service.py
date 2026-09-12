@@ -11,8 +11,10 @@ from app.models.bill import Bill, PaymentMode
 from app.models.cheque import Cheque, ChequeStatus
 from app.models.customer import Customer
 from app.models.payment import Payment, PaymentStatus
+from app.models.user import User
 from app.schemas.payment import ChequeStatusUpdate, PaymentCreate, PaymentUpdate
 from app.utils.audit import write_audit
+from app.utils.scope import enforce_do_scope
 
 TWO = Decimal("0.01")
 
@@ -31,10 +33,12 @@ def _next_payment_number(db: Session, pay_date: date) -> str:
     return f"{prefix}{next_seq:04d}"
 
 
-def create_payment(db: Session, payload: PaymentCreate, user_id: int) -> Payment:
+def create_payment(db: Session, payload: PaymentCreate, user_id: int, user: Optional[User] = None) -> Payment:
     customer = db.get(Customer, payload.customer_id)
     if not customer or customer.is_deleted:
         raise HTTPException(status_code=400, detail="Customer not found")
+    if user is not None:
+        enforce_do_scope(user, customer.do_id)
 
     pay_date = payload.payment_date or date.today()
     amount = Decimal(payload.amount).quantize(TWO)
@@ -89,15 +93,19 @@ def create_payment(db: Session, payload: PaymentCreate, user_id: int) -> Payment
     return payment
 
 
-def get_payment(db: Session, payment_id: int) -> Payment:
+def get_payment(db: Session, payment_id: int, user: Optional[User] = None) -> Payment:
     p = db.get(Payment, payment_id)
     if not p:
         raise HTTPException(status_code=404, detail="Payment not found")
+    if user is not None:
+        customer = db.get(Customer, p.customer_id)
+        enforce_do_scope(user, customer.do_id if customer else None)
     return p
 
 
 def list_payments(db: Session, *, customer_id: Optional[int] = None,
-                  from_date: Optional[date] = None, to_date: Optional[date] = None):
+                  from_date: Optional[date] = None, to_date: Optional[date] = None,
+                  do_id: Optional[int] = None):
     stmt = select(Payment).order_by(Payment.payment_date.desc(), Payment.id.desc())
     if customer_id:
         stmt = stmt.where(Payment.customer_id == customer_id)
@@ -105,11 +113,13 @@ def list_payments(db: Session, *, customer_id: Optional[int] = None,
         stmt = stmt.where(Payment.payment_date >= from_date)
     if to_date:
         stmt = stmt.where(Payment.payment_date <= to_date)
+    if do_id is not None:
+        stmt = stmt.join(Customer, Customer.id == Payment.customer_id).where(Customer.do_id == do_id)
     return stmt
 
 
-def update_payment(db: Session, payment_id: int, payload: PaymentUpdate, user_id: int) -> Payment:
-    p = get_payment(db, payment_id)
+def update_payment(db: Session, payment_id: int, payload: PaymentUpdate, user_id: int, user: Optional[User] = None) -> Payment:
+    p = get_payment(db, payment_id, user=user)
     customer = db.get(Customer, p.customer_id)
     old_status = p.status
     data = payload.model_dump(exclude_unset=True)
@@ -134,8 +144,8 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate, user_id
     return p
 
 
-def delete_payment(db: Session, payment_id: int, user_id: int) -> None:
-    p = get_payment(db, payment_id)
+def delete_payment(db: Session, payment_id: int, user_id: int, user: Optional[User] = None) -> None:
+    p = get_payment(db, payment_id, user=user)
     customer = db.get(Customer, p.customer_id)
     if p.status == PaymentStatus.CLEARED:
         customer.current_balance = (customer.current_balance + p.amount).quantize(TWO)
@@ -152,7 +162,8 @@ def delete_payment(db: Session, payment_id: int, user_id: int) -> None:
 
 # ---------- Cheques ----------
 def list_cheques(db: Session, *, status: Optional[ChequeStatus] = None,
-                 from_date: Optional[date] = None, to_date: Optional[date] = None):
+                 from_date: Optional[date] = None, to_date: Optional[date] = None,
+                 do_id: Optional[int] = None):
     stmt = select(Cheque).order_by(Cheque.cheque_date.desc())
     if status:
         stmt = stmt.where(Cheque.status == status)
@@ -160,13 +171,18 @@ def list_cheques(db: Session, *, status: Optional[ChequeStatus] = None,
         stmt = stmt.where(Cheque.cheque_date >= from_date)
     if to_date:
         stmt = stmt.where(Cheque.cheque_date <= to_date)
+    if do_id is not None:
+        stmt = stmt.join(Customer, Customer.id == Cheque.customer_id).where(Customer.do_id == do_id)
     return stmt
 
 
-def update_cheque_status(db: Session, cheque_id: int, payload: ChequeStatusUpdate, user_id: int) -> Cheque:
+def update_cheque_status(db: Session, cheque_id: int, payload: ChequeStatusUpdate, user_id: int, user: Optional[User] = None) -> Cheque:
     cheque = db.get(Cheque, cheque_id)
     if not cheque:
         raise HTTPException(status_code=404, detail="Cheque not found")
+    if user is not None:
+        customer = db.get(Customer, cheque.customer_id) if cheque.customer_id else None
+        enforce_do_scope(user, customer.do_id if customer else None)
 
     old_status = cheque.status
     cheque.status = payload.status

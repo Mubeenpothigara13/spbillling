@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, Index, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -30,6 +30,13 @@ class User(Base, TimestampMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # NULL = S.P. Gas (global — sees every DO). Set = locked to that DO
+    # everywhere (lists, reports, get-by-id, create) via app/utils/scope.py.
+    do_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("distributor_outlets.id", ondelete="RESTRICT"),
+        nullable=True, index=True,
+    )
 
     __table_args__ = (
         Index("ix_users_role_active", "role", "is_active"),

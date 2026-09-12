@@ -206,6 +206,25 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
           const Spacer(),
+          if (auth.doCode != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: DT.s8, vertical: 2),
+              decoration: BoxDecoration(
+                color: DT.brand600,
+                borderRadius: BorderRadius.circular(DT.rXs),
+              ),
+              child: Text(
+                'DO ${auth.doCode}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: DT.fsSm,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: DT.s8),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(
                 horizontal: DT.s8, vertical: 2),

@@ -13,6 +13,9 @@ class UserCreate(BaseModel):
     email: Optional[EmailStr] = None
     role: UserRole = UserRole.BILLING_STAFF
     is_active: bool = True
+    # Set to lock this login to one Distributor Outlet. Leave None for a
+    # global S.P. Gas login that sees every DO.
+    do_id: Optional[int] = None
 
 
 class UserUpdate(BaseModel):
@@ -21,6 +24,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=4, max_length=128)
+    do_id: Optional[int] = None
 
 
 class UserOut(BaseModel):
@@ -32,5 +36,6 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     role: UserRole
     is_active: bool
+    do_id: Optional[int] = None
     last_login: Optional[datetime] = None
     created_at: datetime

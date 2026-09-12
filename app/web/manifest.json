@@ -1,11 +1,11 @@
 {
-    "name": "sp_billing",
-    "short_name": "sp_billing",
+    "name": "S.P. Gas Billing",
+    "short_name": "S.P. Gas Billing",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F766E",
+    "theme_color": "#0F766E",
+    "description": "Billing and customer management for S.P. Gas Agency.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

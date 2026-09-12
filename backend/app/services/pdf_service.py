@@ -300,6 +300,8 @@ def _draw_sp_bill_template(c: canvas.Canvas, bill: Bill,
     # ---------- Cost of Gas + HSN combined box (Y 67–80) ----------
     text(1.5, 72, "Cost of Gas 15kg. (Nos. - 1) (SEAL PACK)",
          font="Helvetica", size=7)
+    text(1.5, 77, "Domestic",
+         font="Helvetica", size=7)
     total_amount = (bill.total_amount or Decimal("0")).quantize(Decimal("0.01"))
     text(89, 72, f"{total_amount:.2f}",
          font="Helvetica-Bold", size=11, align="right")

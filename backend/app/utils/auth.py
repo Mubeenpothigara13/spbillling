@@ -66,3 +66,13 @@ def require_roles(*roles: UserRole):
 
 require_admin = require_roles(UserRole.ADMIN)
 require_staff = require_roles(UserRole.ADMIN, UserRole.BILLING_STAFF)
+
+
+def require_global_admin(user: User = Depends(require_admin)) -> User:
+    """Admin AND not locked to a DO — i.e. S.P. Gas itself. Use for actions
+    that affect state shared across every DO (managing DOs, users, the
+    product catalog, settings, audit trail) so a DO-scoped admin login can
+    never reach another DO's data or company-wide config."""
+    if user.do_id is not None:
+        raise HTTPException(status_code=403, detail="Only S.P. Gas can perform this action")
+    return user

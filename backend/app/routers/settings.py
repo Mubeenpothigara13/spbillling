@@ -6,7 +6,7 @@ from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.setting import SettingOut, SettingUpsert
 from app.services import setting_service
-from app.utils.auth import get_current_user, require_admin
+from app.utils.auth import get_current_user, require_global_admin
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -28,13 +28,13 @@ def get_setting(key: str, db: Session = Depends(get_db),
 
 @router.put("/{key}", response_model=APIResponse[SettingOut])
 def upsert_setting(key: str, payload: SettingUpsert, db: Session = Depends(get_db),
-                   admin: User = Depends(require_admin)):
+                   admin: User = Depends(require_global_admin)):
     s = setting_service.upsert_setting(db, key, payload, admin.id)
     return APIResponse(data=SettingOut.model_validate(s), message="Setting saved")
 
 
 @router.delete("/{key}", response_model=APIResponse)
 def delete_setting(key: str, db: Session = Depends(get_db),
-                   _admin: User = Depends(require_admin)):
+                   _admin: User = Depends(require_global_admin)):
     setting_service.delete_setting(db, key)
     return APIResponse(message="Setting deleted")

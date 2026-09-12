@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
+from typing import Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -27,7 +28,7 @@ from app.schemas.report import (
 ZERO = Decimal("0")
 
 
-def daily_sales(db: Session, from_date: date, to_date: date) -> DailySalesReport:
+def daily_sales(db: Session, from_date: date, to_date: date, do_id: Optional[int] = None) -> DailySalesReport:
     mode_sum = lambda m: func.sum(case((Bill.payment_mode == m, Bill.amount_paid), else_=ZERO))
     stmt = (
         select(
@@ -47,6 +48,8 @@ def daily_sales(db: Session, from_date: date, to_date: date) -> DailySalesReport
         .group_by(Bill.bill_date)
         .order_by(Bill.bill_date)
     )
+    if do_id is not None:
+        stmt = stmt.join(Customer, Bill.customer_id == Customer.id).where(Customer.do_id == do_id)
     rows: list[DailySalesRow] = []
     total_sales = ZERO
     total_collected = ZERO
@@ -70,12 +73,14 @@ def daily_sales(db: Session, from_date: date, to_date: date) -> DailySalesReport
     )
 
 
-def outstanding(db: Session) -> OutstandingReport:
+def outstanding(db: Session, do_id: Optional[int] = None) -> OutstandingReport:
     stmt = (
         select(Customer)
         .where(Customer.is_deleted.is_(False), Customer.current_balance > 0)
         .order_by(Customer.current_balance.desc())
     )
+    if do_id is not None:
+        stmt = stmt.where(Customer.do_id == do_id)
     customers = db.scalars(stmt).all()
     rows = [OutstandingRow(
         customer_id=c.id, customer_name=c.name, mobile=c.mobile, village=c.village,
@@ -88,12 +93,14 @@ def outstanding(db: Session) -> OutstandingReport:
     )
 
 
-def empty_bottles(db: Session) -> EmptyBottleReport:
+def empty_bottles(db: Session, do_id: Optional[int] = None) -> EmptyBottleReport:
     stmt = (
         select(Customer)
         .where(Customer.is_deleted.is_(False), Customer.current_empty_bottles > 0)
         .order_by(Customer.current_empty_bottles.desc())
     )
+    if do_id is not None:
+        stmt = stmt.where(Customer.do_id == do_id)
     customers = db.scalars(stmt).all()
     rows = [EmptyBottleRow(
         customer_id=c.id, customer_name=c.name, mobile=c.mobile, village=c.village,
@@ -105,7 +112,7 @@ def empty_bottles(db: Session) -> EmptyBottleReport:
     )
 
 
-def product_wise_sales(db: Session, from_date: date, to_date: date) -> ProductSalesReport:
+def product_wise_sales(db: Session, from_date: date, to_date: date, do_id: Optional[int] = None) -> ProductSalesReport:
     stmt = (
         select(
             BillItem.product_variant_id,
@@ -124,6 +131,8 @@ def product_wise_sales(db: Session, from_date: date, to_date: date) -> ProductSa
         .group_by(BillItem.product_variant_id, ProductVariant.name, Product.name)
         .order_by(func.sum(BillItem.line_total).desc())
     )
+    if do_id is not None:
+        stmt = stmt.join(Customer, Customer.id == Bill.customer_id).where(Customer.do_id == do_id)
     rows = [ProductSalesRow(
         variant_id=r.product_variant_id, variant_name=r.variant_name,
         product_name=r.product_name, qty_sold=int(r.qty or 0),
@@ -132,9 +141,9 @@ def product_wise_sales(db: Session, from_date: date, to_date: date) -> ProductSa
     return ProductSalesReport(from_date=from_date, to_date=to_date, rows=rows)
 
 
-def cash_book(db: Session, from_date: date, to_date: date) -> CashBookReport:
+def cash_book(db: Session, from_date: date, to_date: date, do_id: Optional[int] = None) -> CashBookReport:
     # cash IN: bills (cash) + payments (cash, cleared)
-    bills_cash = (
+    bills_cash_q = (
         select(Bill.bill_date.label("d"), func.sum(Bill.amount_paid).label("amt"))
         .where(
             Bill.bill_date.between(from_date, to_date),
@@ -142,9 +151,8 @@ def cash_book(db: Session, from_date: date, to_date: date) -> CashBookReport:
             Bill.payment_mode == PaymentMode.CASH,
         )
         .group_by(Bill.bill_date)
-    ).subquery()
-
-    pay_cash = (
+    )
+    pay_cash_q = (
         select(Payment.payment_date.label("d"), func.sum(Payment.amount).label("amt"))
         .where(
             Payment.payment_date.between(from_date, to_date),
@@ -153,7 +161,12 @@ def cash_book(db: Session, from_date: date, to_date: date) -> CashBookReport:
             Payment.reference_bill_id.is_(None),  # avoid double-count of on-bill payments
         )
         .group_by(Payment.payment_date)
-    ).subquery()
+    )
+    if do_id is not None:
+        bills_cash_q = bills_cash_q.join(Customer, Customer.id == Bill.customer_id).where(Customer.do_id == do_id)
+        pay_cash_q = pay_cash_q.join(Customer, Customer.id == Payment.customer_id).where(Customer.do_id == do_id)
+    bills_cash = bills_cash_q.subquery()
+    pay_cash = pay_cash_q.subquery()
 
     cur = from_date
     rows: list[CashBookRow] = []
@@ -173,7 +186,7 @@ def cash_book(db: Session, from_date: date, to_date: date) -> CashBookReport:
     )
 
 
-def gst_summary(db: Session, from_date: date, to_date: date) -> GstReport:
+def gst_summary(db: Session, from_date: date, to_date: date, do_id: Optional[int] = None) -> GstReport:
     stmt = (
         select(
             BillItem.gst_rate,
@@ -189,6 +202,8 @@ def gst_summary(db: Session, from_date: date, to_date: date) -> GstReport:
         .group_by(BillItem.gst_rate)
         .order_by(BillItem.gst_rate)
     )
+    if do_id is not None:
+        stmt = stmt.join(Customer, Customer.id == Bill.customer_id).where(Customer.do_id == do_id)
     rows = []
     total_taxable = ZERO
     total_gst = ZERO
@@ -205,16 +220,14 @@ def gst_summary(db: Session, from_date: date, to_date: date) -> GstReport:
     )
 
 
-def dashboard(db: Session) -> dict:
+def dashboard(db: Session, do_id: Optional[int] = None) -> dict:
     today = date.today()
-    today_bills = db.execute(
-        select(
-            func.count(Bill.id),
-            func.coalesce(func.sum(Bill.total_amount), 0),
-            func.coalesce(func.sum(case((Bill.payment_mode == PaymentMode.CASH, Bill.amount_paid), else_=0)), 0),
-        ).where(Bill.bill_date == today, Bill.status != BillStatus.CANCELLED)
-    ).one()
-    today_cylinders = db.scalar(
+    today_bills_q = select(
+        func.count(Bill.id),
+        func.coalesce(func.sum(Bill.total_amount), 0),
+        func.coalesce(func.sum(case((Bill.payment_mode == PaymentMode.CASH, Bill.amount_paid), else_=0)), 0),
+    ).where(Bill.bill_date == today, Bill.status != BillStatus.CANCELLED)
+    today_cylinders_q = (
         select(func.coalesce(func.sum(BillItem.quantity), 0))
         .join(Bill, Bill.id == BillItem.bill_id)
         .join(ProductVariant, ProductVariant.id == BillItem.product_variant_id)
@@ -224,15 +237,23 @@ def dashboard(db: Session) -> dict:
             Bill.status != BillStatus.CANCELLED,
             Product.is_returnable.is_(True),
         )
-    ) or 0
-    outstanding_total = db.scalar(
-        select(func.coalesce(func.sum(Customer.current_balance), 0))
-        .where(Customer.is_deleted.is_(False), Customer.current_balance > 0)
-    ) or 0
-    pending_empty = db.scalar(
-        select(func.coalesce(func.sum(Customer.current_empty_bottles), 0))
-        .where(Customer.is_deleted.is_(False), Customer.current_empty_bottles > 0)
-    ) or 0
+    )
+    outstanding_q = select(func.coalesce(func.sum(Customer.current_balance), 0)).where(
+        Customer.is_deleted.is_(False), Customer.current_balance > 0
+    )
+    pending_empty_q = select(func.coalesce(func.sum(Customer.current_empty_bottles), 0)).where(
+        Customer.is_deleted.is_(False), Customer.current_empty_bottles > 0
+    )
+    if do_id is not None:
+        today_bills_q = today_bills_q.join(Customer, Customer.id == Bill.customer_id).where(Customer.do_id == do_id)
+        today_cylinders_q = today_cylinders_q.join(Customer, Customer.id == Bill.customer_id).where(Customer.do_id == do_id)
+        outstanding_q = outstanding_q.where(Customer.do_id == do_id)
+        pending_empty_q = pending_empty_q.where(Customer.do_id == do_id)
+
+    today_bills = db.execute(today_bills_q).one()
+    today_cylinders = db.scalar(today_cylinders_q) or 0
+    outstanding_total = db.scalar(outstanding_q) or 0
+    pending_empty = db.scalar(pending_empty_q) or 0
 
     return {
         "today_bills_count": today_bills[0] or 0,

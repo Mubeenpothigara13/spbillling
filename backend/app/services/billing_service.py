@@ -16,8 +16,10 @@ from app.models.customer import Customer
 from app.models.empty_bottle import EmptyBottleTransaction, EmptyBottleTxnType
 from app.models.payment import Payment
 from app.models.product import Product, ProductVariant
+from app.models.user import User
 from app.schemas.bill import BillCreate, BillItemCreate, BillUpdate
 from app.utils.audit import write_audit
+from app.utils.scope import enforce_do_scope
 
 TWO = Decimal("0.01")
 
@@ -66,10 +68,12 @@ def _load_variant_with_product(db: Session, variant_id: int) -> tuple[ProductVar
     return v, p
 
 
-def create_bill(db: Session, payload: BillCreate, user_id: int) -> Bill:
+def create_bill(db: Session, payload: BillCreate, user_id: int, user: Optional[User] = None) -> Bill:
     customer = db.get(Customer, payload.customer_id)
     if not customer or customer.is_deleted:
         raise HTTPException(status_code=400, detail="Customer not found")
+    if user is not None:
+        enforce_do_scope(user, customer.do_id)
 
     bill_date = payload.bill_date or date.today()
 
@@ -170,12 +174,14 @@ def create_bill(db: Session, payload: BillCreate, user_id: int) -> Bill:
     return bill
 
 
-def get_bill(db: Session, bill_id: int) -> Bill:
+def get_bill(db: Session, bill_id: int, user: Optional[User] = None) -> Bill:
     bill = db.scalar(
         select(Bill).options(selectinload(Bill.items)).where(Bill.id == bill_id)
     )
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
+    if user is not None:
+        enforce_do_scope(user, bill.customer.do_id)
     return bill
 
 
@@ -233,8 +239,8 @@ def list_bills(
     return stmt
 
 
-def update_bill(db: Session, bill_id: int, payload: BillUpdate, user_id: int) -> Bill:
-    bill = get_bill(db, bill_id)
+def update_bill(db: Session, bill_id: int, payload: BillUpdate, user_id: int, user: Optional[User] = None) -> Bill:
+    bill = get_bill(db, bill_id, user=user)
     if bill.status == BillStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Cannot edit cancelled bill")
 
@@ -307,7 +313,7 @@ def cancel_bill(db: Session, bill_id: int, user_id: int) -> Bill:
     return bill
 
 
-def delete_bill_hard(db: Session, bill_id: int, user_id: int) -> dict:
+def delete_bill_hard(db: Session, bill_id: int, user_id: int, user: Optional[User] = None) -> dict:
     """Reverse a bill's side-effects (like cancel) AND remove the row from DB
     so its bill_number is free again — the next created bill will reuse the
     smallest gap, including this one.
@@ -316,7 +322,7 @@ def delete_bill_hard(db: Session, bill_id: int, user_id: int) -> dict:
     bill-tied cheques and payments. Audit row is written with the bill # so
     the deletion is traceable even after the row is gone.
     """
-    bill = get_bill(db, bill_id)
+    bill = get_bill(db, bill_id, user=user)
     bill_number = bill.bill_number
     customer = db.get(Customer, bill.customer_id)
 
@@ -368,7 +374,7 @@ def delete_bill_hard(db: Session, bill_id: int, user_id: int) -> dict:
 
 
 def bulk_delete_bills(
-    db: Session, bill_ids: list[int], user_id: int
+    db: Session, bill_ids: list[int], user_id: int, user: Optional[User] = None
 ) -> dict:
     """Hard-delete many bills; each one reverses its side-effects (customer
     balance, empties, stock, cheques, payments) and removes the row so the
@@ -387,6 +393,9 @@ def bulk_delete_bills(
                 .where(Bill.id == bid)
             )
             if not bill:
+                skipped += 1
+                continue
+            if user is not None and user.do_id is not None and bill.customer.do_id != user.do_id:
                 skipped += 1
                 continue
             bill_number = bill.bill_number
@@ -442,11 +451,13 @@ def bulk_delete_bills(
     }
 
 
-def customer_ledger(db: Session, customer_id: int):
+def customer_ledger(db: Session, customer_id: int, user: Optional[User] = None):
     from app.models.payment import Payment
     customer = db.get(Customer, customer_id)
     if not customer or customer.is_deleted:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if user is not None:
+        enforce_do_scope(user, customer.do_id)
 
     entries = []
     running = Decimal(customer.opening_balance or 0)
@@ -627,7 +638,7 @@ def _resolve_variant(
 
 
 def import_bills_from_excel(
-    db: Session, file_bytes: bytes, user_id: int
+    db: Session, file_bytes: bytes, user_id: int, user: Optional[User] = None
 ) -> dict:
     wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
     ws = wb.active
@@ -720,6 +731,9 @@ def import_bills_from_excel(
                     "Provide at least one of: Mobile, Consumer_Number, Name"
                 )
 
+            if user is not None:
+                enforce_do_scope(user, cust.do_id)
+
             bill_date = _parse_bill_date(col(row, "date", "bill_date"))
             if not bill_date:
                 raise ValueError("Date is required")
@@ -776,7 +790,7 @@ def import_bills_from_excel(
                 payment_mode=mode,
                 notes=notes,
             )
-            create_bill(db, payload, user_id)
+            create_bill(db, payload, user_id, user=user)
             imported += 1
         except Exception as e:
             errors.append({"row": idx, "error": str(e), "data": dict(row)})

@@ -13,7 +13,7 @@
 backend/
 ├── app/
 │   ├── config/        settings.py (env) · database.py (engine, SessionLocal, get_db)
-│   ├── models/        9 files, 12 tables — ORM definitions only
+│   ├── models/        11 files, 13 tables — ORM definitions only
 │   ├── schemas/       Pydantic v2 request/response shapes per module
 │   ├── services/      ALL business logic lives here (not in routers)
 │   ├── routers/       Thin HTTP layer — delegates to services
@@ -41,8 +41,17 @@ backend/
 ### Users · `routers/users.py` → `services/user_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET / POST | `/api/users` | List / create | admin |
-| GET / PUT / DELETE | `/api/users/{id}` | Detail / update / deactivate | admin |
+| GET / POST | `/api/users` | List / create | **global admin** |
+| GET / PUT / DELETE | `/api/users/{id}` | Detail / update / deactivate | **global admin** |
+
+### Distributor Outlets · `routers/distributor_outlets.py` → `services/distributor_outlet_service.py`
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | `/api/distributor-outlets` | List/search outlets — a DO-scoped login only ever gets its own row back | any |
+| GET | `/api/distributor-outlets/search` | Typeahead — same self-only restriction for DO-scoped logins | any |
+| GET | `/api/distributor-outlets/{id}` | Detail — 404 if a DO-scoped login requests another DO's id | any |
+| POST / PUT / DELETE | `/api/distributor-outlets[, /{id}]` | Create / update / soft-delete the DO master record | **global admin** |
+| PATCH | `/api/distributor-outlets/{id}/active` | Toggle active | **global admin** |
 
 ### Customers · `routers/customers.py` → `services/customer_service.py`
 | Method | Path | Purpose | Role |
@@ -58,10 +67,10 @@ backend/
 ### Products · `routers/products.py` → `services/product_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| CRUD | `/api/products/categories[, /{id}]` | Category master | admin |
-| CRUD | `/api/products[, /{id}]` | Product master | admin |
+| CRUD | `/api/products/categories[, /{id}]` | Category master | **global admin** for mutations, any for GET |
+| CRUD | `/api/products[, /{id}]` | Product master | **global admin** for mutations, any for GET |
 | GET  | `/api/products/variants/list` | All variants paginated | any |
-| CRUD | `/api/products/variants[, /{id}]` | Variant master (price, stock, GST, deposit) | admin |
+| CRUD | `/api/products/variants[, /{id}]` | Variant master (price, stock, GST, deposit) | **global admin** for mutations, any for GET |
 
 ### Bills · `routers/bills.py` → `services/billing_service.py` + `services/pdf_service.py`
 | Method | Path | Purpose | Role |
@@ -69,10 +78,11 @@ backend/
 | GET | `/api/bills` | List (by customer / date / status) | any |
 | POST / PUT | `/api/bills[, /{id}]` | Create / edit — runs GST, empty-bottle, stock, customer-balance updates | staff+ |
 | GET | `/api/bills/{id}` | Detail with items | any |
-| DELETE | `/api/bills/{id}` | Cancel — reverses balance/stock/empty | admin |
+| DELETE | `/api/bills/{id}` | Hard-delete, DO-scoped (reverses balance/stock/empty, frees the bill #) | admin |
 | GET | `/api/bills/{id}/pdf` | Single A4 PDF | any |
 | GET | `/api/bills/print/batch?from=&to=&format=9up` | Batch 9-up or single | any |
 | GET | `/api/bills/customer/{id}/ledger` | Full customer account ledger | any |
+| POST | `/api/bills/reset` | Wipe every bill company-wide, restart numbering | **global admin** |
 
 ### Payments · `routers/payments.py` → `services/payment_service.py`
 | Method | Path | Purpose | Role |
@@ -102,13 +112,13 @@ backend/
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | `/api/settings[, /{key}]` | List / fetch | any |
-| PUT | `/api/settings/{key}` | Upsert | admin |
-| DELETE | `/api/settings/{key}` | Delete | admin |
+| PUT | `/api/settings/{key}` | Upsert | **global admin** |
+| DELETE | `/api/settings/{key}` | Delete | **global admin** |
 
 ### Audit Logs · `routers/audit.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | `/api/audit-logs` | Mutation trail (by entity / user / date) | admin |
+| GET | `/api/audit-logs` | Mutation trail (by entity / user / date) | **global admin** |
 
 ---
 
@@ -141,6 +151,7 @@ backend/
 | `empty_bottle.py` | `empty_bottle_transactions` | FK → customer CASCADE, IX(customer_id, created_at) |
 | `audit.py` | `audit_logs` | IX(entity_type, entity_id, created_at), IX(user_id, created_at) |
 | `setting.py` | `settings` | UK(key) |
+| `distributor_outlet.py` | `distributor_outlets` | UK(code), IX(is_active, is_deleted) |
 
 ---
 
@@ -149,7 +160,8 @@ backend/
 - JWT HS256 via `python-jose`. Payload: `sub=user_id (str)`, `role`, `exp`. TTL 7 days (`ACCESS_TOKEN_EXPIRE_MINUTES=10080`).
 - Password hashed via `passlib[bcrypt]` (bcrypt pinned `<5.0` — passlib compat).
 - Roles: `admin` · `billing_staff` · `viewer`.
-- Guards (in `app/utils/auth.py`): `get_current_user` (any), `require_staff` (admin+staff), `require_admin` (admin only). Apply via `Depends()` in the router signature.
+- Guards (in `app/utils/auth.py`): `get_current_user` (any), `require_staff` (admin+staff), `require_admin` (admin — DO-scoped or global), `require_global_admin` (admin AND `do_id is None`, i.e. S.P. Gas itself). Apply via `Depends()` in the router signature.
+- **Multi-tenant DO scoping** (`app/utils/scope.py`): `User.do_id` is `NULL` for a global S.P. Gas login (sees/manages every DO) or set to lock a login to one Distributor Outlet. `enforce_do_scope(user, entity_do_id)` 404s a DO-scoped user reaching another DO's row; `resolve_do_filter(user, requested_do_id)` pins list/report filters to the caller's own DO. Applied throughout customers/bills/payments/cheques/reports. Use `require_global_admin` (not `require_admin`) for anything that isn't naturally DO-scoped — managing the DO directory itself, users, the shared product catalog, settings, audit logs — so a DO's own admin login can never reach another DO's data or company-wide config.
 - **Default admin (from `scripts/seed.py`):** `admin` / `admin123` — rotate before production.
 
 ---
@@ -183,7 +195,8 @@ curl -X POST http://localhost:8001/api/auth/login \
 | Add a DB column / table | `models/<domain>.py` → `alembic revision --autogenerate -m "..."` → `alembic upgrade head` |
 | Change bill number format | `billing_service._fy_prefix()` and `_next_bill_number()` |
 | Change PDF layout (single or 9-up) | `services/pdf_service.py` |
-| Change role permissions on a route | `Depends(require_admin / require_staff)` in the router |
+| Change role permissions on a route | `Depends(require_admin / require_staff / require_global_admin)` in the router |
+| Change what a DO-scoped login can see/touch vs. S.P. Gas | `app/utils/scope.py` (`enforce_do_scope`, `resolve_do_filter`) + `require_global_admin` in `app/utils/auth.py` |
 | Tweak env / JWT TTL / bill code | `app/config/settings.py` + `.env` |
 | Seed data (admin, categories, variants) | `scripts/seed.py` |
 | Response shape | `schemas/common.py` — `APIResponse`, `PaginatedResponse` |

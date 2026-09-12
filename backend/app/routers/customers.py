@@ -15,6 +15,7 @@ from app.schemas.customer import (
 from app.services import customer_service
 from app.utils.auth import get_current_user, require_admin, require_staff
 from app.utils.pagination import paginate
+from app.utils.scope import resolve_do_filter
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
@@ -35,11 +36,11 @@ def list_customers(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = customer_service.list_customers(
         db, q=q, customer_type=customer_type, status=status, village=village,
-        do_id=do_id,
+        do_id=resolve_do_filter(user, do_id),
         registered_from=registered_from, registered_to=registered_to, sort=sort,
     )
     return paginate(db, stmt, page=page, per_page=per_page, item_schema=CustomerOut)
@@ -50,9 +51,9 @@ def search(
     q: str = Query(..., min_length=2),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    rows = customer_service.search_customers(db, q, limit)
+    rows = customer_service.search_customers(db, q, limit, do_id=resolve_do_filter(user, None))
     return APIResponse(data=[CustomerSearchResult.model_validate(r) for r in rows])
 
 
@@ -60,9 +61,9 @@ def search(
 def get_customer(
     customer_id: int,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    cust = customer_service.get_customer(db, customer_id)
+    cust = customer_service.get_customer(db, customer_id, user=user)
     return APIResponse(data=CustomerOut.model_validate(cust))
 
 
@@ -72,7 +73,7 @@ def create_customer(
     db: Session = Depends(get_db),
     user: User = Depends(require_staff),
 ):
-    cust = customer_service.create_customer(db, payload, user.id)
+    cust = customer_service.create_customer(db, payload, user.id, user=user)
     return APIResponse(data=CustomerOut.model_validate(cust), message="Customer created")
 
 
@@ -83,7 +84,7 @@ def update_customer(
     db: Session = Depends(get_db),
     user: User = Depends(require_staff),
 ):
-    cust = customer_service.update_customer(db, customer_id, payload, user.id)
+    cust = customer_service.update_customer(db, customer_id, payload, user.id, user=user)
     return APIResponse(data=CustomerOut.model_validate(cust), message="Customer updated")
 
 
@@ -93,7 +94,7 @@ def delete_customer(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    customer_service.soft_delete_customer(db, customer_id, user.id)
+    customer_service.soft_delete_customer(db, customer_id, user.id, user=user)
     return APIResponse(message="Customer deleted")
 
 
@@ -103,7 +104,7 @@ def bulk_delete_customers(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    result = customer_service.bulk_soft_delete_customers(db, ids, user.id)
+    result = customer_service.bulk_soft_delete_customers(db, ids, user.id, user=user)
     return APIResponse(
         data=result,
         message=f"Deleted {result['deleted']} · skipped {result['skipped']}",
@@ -117,7 +118,7 @@ def set_customer_active(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    cust = customer_service.set_customer_active(db, customer_id, active, user.id)
+    cust = customer_service.set_customer_active(db, customer_id, active, user.id, user=user)
     return APIResponse(data=CustomerOut.model_validate(cust))
 
 
@@ -128,16 +129,16 @@ async def import_customers(
     user: User = Depends(require_staff),
 ):
     content = await file.read()
-    result = customer_service.import_customers_from_excel(db, content, user.id)
+    result = customer_service.import_customers_from_excel(db, content, user.id, user=user)
     return APIResponse(data=result, message=f"Imported {result.imported} customers")
 
 
 @router.get("/export/excel")
 def export_customers(
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    data = customer_service.export_customers_to_excel(db)
+    data = customer_service.export_customers_to_excel(db, do_id=resolve_do_filter(user, None))
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

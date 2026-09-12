@@ -18,8 +18,9 @@ from app.services.pdf_service import (
     render_bills_9up_pdf,
     render_bills_preprinted_overlay_pdf,
 )
-from app.utils.auth import get_current_user, require_admin, require_staff
+from app.utils.auth import get_current_user, require_admin, require_global_admin, require_staff
 from app.utils.pagination import paginate
+from app.utils.scope import resolve_do_filter
 
 router = APIRouter(prefix="/bills", tags=["Bills"])
 
@@ -37,12 +38,12 @@ def list_bills(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = billing_service.list_bills(
         db, customer_id=customer_id, from_date=from_date, to_date=to_date, status=status,
         bill_number_from=bill_number_from, bill_number_to=bill_number_to,
-        do_id=do_id, city=city,
+        do_id=resolve_do_filter(user, do_id), city=city,
     )
     return paginate(db, stmt, page=page, per_page=per_page, item_schema=BillSummary)
 
@@ -50,7 +51,7 @@ def list_bills(
 @router.post("", response_model=APIResponse[BillOut])
 def create_bill(payload: BillCreate, db: Session = Depends(get_db),
                 user: User = Depends(require_staff)):
-    bill = billing_service.create_bill(db, payload, user.id)
+    bill = billing_service.create_bill(db, payload, user.id, user=user)
     return APIResponse(data=BillOut.model_validate(bill), message="Bill created")
 
 
@@ -67,15 +68,15 @@ def next_bill_number(
 
 @router.get("/{bill_id}", response_model=APIResponse[BillOut])
 def get_bill(bill_id: int, db: Session = Depends(get_db),
-             _user: User = Depends(get_current_user)):
-    bill = billing_service.get_bill(db, bill_id)
+             user: User = Depends(get_current_user)):
+    bill = billing_service.get_bill(db, bill_id, user=user)
     return APIResponse(data=BillOut.model_validate(bill))
 
 
 @router.put("/{bill_id}", response_model=APIResponse[BillOut])
 def update_bill(bill_id: int, payload: BillUpdate, db: Session = Depends(get_db),
                 user: User = Depends(require_staff)):
-    bill = billing_service.update_bill(db, bill_id, payload, user.id)
+    bill = billing_service.update_bill(db, bill_id, payload, user.id, user=user)
     return APIResponse(data=BillOut.model_validate(bill), message="Bill updated")
 
 
@@ -85,7 +86,7 @@ def delete_bill(bill_id: int, db: Session = Depends(get_db),
     """Hard-delete the bill so its number is free for the next bill.
     Side-effects (customer balance, empty-bottle ledger, stock, cheques,
     bill-linked payments) are reversed first."""
-    result = billing_service.delete_bill_hard(db, bill_id, user.id)
+    result = billing_service.delete_bill_hard(db, bill_id, user.id, user=user)
     return APIResponse(
         data=result,
         message=f"Deleted bill {result['bill_number']} — slot is free again",
@@ -98,7 +99,7 @@ def bulk_delete_bills(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    result = billing_service.bulk_delete_bills(db, ids, user.id)
+    result = billing_service.bulk_delete_bills(db, ids, user.id, user=user)
     return APIResponse(
         data=result,
         message=f"Deleted {result['deleted']} bills · "
@@ -108,8 +109,8 @@ def bulk_delete_bills(
 
 @router.get("/{bill_id}/pdf")
 def bill_pdf(bill_id: int, db: Session = Depends(get_db),
-             _user: User = Depends(get_current_user)):
-    bill = billing_service.get_bill(db, bill_id)
+             user: User = Depends(get_current_user)):
+    bill = billing_service.get_bill(db, bill_id, user=user)
     pdf_bytes = render_bill_sp_single_pdf(bill)
     return Response(
         content=pdf_bytes,
@@ -128,12 +129,12 @@ def print_batch(
     bill_number_from: Optional[str] = Query(None),
     bill_number_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = billing_service.list_bills(
         db, from_date=from_date, to_date=to_date,
         status=BillStatus.CONFIRMED,
-        do_id=do_id, city=city,
+        do_id=resolve_do_filter(user, do_id), city=city,
         bill_number_from=bill_number_from, bill_number_to=bill_number_to,
     )
     bills = list(db.scalars(stmt).all())
@@ -158,8 +159,8 @@ def print_batch(
 
 @router.get("/customer/{customer_id}/ledger", response_model=APIResponse[CustomerLedger])
 def customer_ledger(customer_id: int, db: Session = Depends(get_db),
-                    _user: User = Depends(get_current_user)):
-    data = billing_service.customer_ledger(db, customer_id)
+                    user: User = Depends(get_current_user)):
+    data = billing_service.customer_ledger(db, customer_id, user=user)
     return APIResponse(data=CustomerLedger(**data))
 
 
@@ -167,10 +168,11 @@ def customer_ledger(customer_id: int, db: Session = Depends(get_db),
 def reset_all_bills(
     confirm: str = Body(..., embed=True),
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_global_admin),
 ):
     """Hard-delete every bill so numbering restarts at 0001. Caller must send
-    `{"confirm": "RESET"}` so this can never be triggered by accident."""
+    `{"confirm": "RESET"}` so this can never be triggered by accident.
+    This wipes bills company-wide, so only S.P. Gas may run it."""
     if confirm != "RESET":
         raise HTTPException(
             status_code=400,
@@ -191,7 +193,7 @@ async def import_bills(
     user: User = Depends(require_staff),
 ):
     content = await file.read()
-    result = billing_service.import_bills_from_excel(db, content, user.id)
+    result = billing_service.import_bills_from_excel(db, content, user.id, user=user)
     db.commit()
     errors = result.get("errors", [])
     return APIResponse(

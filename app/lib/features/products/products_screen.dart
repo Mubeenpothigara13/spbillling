@@ -235,7 +235,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       );
 
   Widget _variantsPane() {
-    final isAdmin = ref.watch(authControllerProvider).role == 'admin';
+    final auth = ref.watch(authControllerProvider);
+    // The product catalog is shared across every DO, so mutating it is
+    // S.P. Gas only — a DO-scoped admin login is rejected by the backend
+    // (require_global_admin) even though it still holds the admin role.
+    final isAdmin = auth.role == 'admin' && auth.doCode == null;
     return Container(
       decoration: BoxDecoration(
         color: DT.surface,

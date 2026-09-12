@@ -119,6 +119,7 @@ def list_dos(
     q: Optional[str] = None,
     active: Optional[bool] = None,
     include_deleted: bool = False,
+    restrict_to_id: Optional[int] = None,
 ):
     stmt = select(DistributorOutlet)
     if not include_deleted:
@@ -132,11 +133,21 @@ def list_dos(
             DistributorOutlet.owner_name.ilike(like),
             DistributorOutlet.location.ilike(like),
         ))
+    # DO-scoped callers (restrict_to_id set) can only ever see their own
+    # outlet — the directory of every other DO's owner/location is not
+    # theirs to browse. S.P. Gas (restrict_to_id=None) sees everything.
+    if restrict_to_id is not None:
+        stmt = stmt.where(DistributorOutlet.id == restrict_to_id)
     stmt = stmt.order_by(DistributorOutlet.code.asc())
     return stmt
 
 
-def search_dos(db: Session, q: str, limit: int = 20) -> list[DistributorOutlet]:
+def search_dos(
+    db: Session, q: str, limit: int = 20, *, restrict_to_id: Optional[int] = None
+) -> list[DistributorOutlet]:
+    if restrict_to_id is not None:
+        do = db.get(DistributorOutlet, restrict_to_id)
+        return [do] if do and not do.is_deleted else []
     if not q or len(q.strip()) < 1:
         # return top N active
         stmt = (

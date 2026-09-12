@@ -24,5 +24,6 @@ def logout(_: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=APIResponse[CurrentUser])
-def me(user: User = Depends(get_current_user)):
-    return APIResponse(data=CurrentUser.model_validate(user.__dict__))
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    data = {**user.__dict__, "do_code": auth_service.get_do_code(db, user.do_id)}
+    return APIResponse(data=CurrentUser.model_validate(data))

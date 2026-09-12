@@ -14,59 +14,60 @@ from app.schemas.report import (
 )
 from app.services import report_service
 from app.utils.auth import get_current_user
+from app.utils.scope import resolve_do_filter
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
 @router.get("/dashboard", response_model=APIResponse[dict])
-def dashboard(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
-    return APIResponse(data=report_service.dashboard(db))
+def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return APIResponse(data=report_service.dashboard(db, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/daily-sales", response_model=APIResponse[DailySalesReport])
 def daily_sales(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    db: Session = Depends(get_db), _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    return APIResponse(data=report_service.daily_sales(db, from_date, to_date))
+    return APIResponse(data=report_service.daily_sales(db, from_date, to_date, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/outstanding", response_model=APIResponse[OutstandingReport])
-def outstanding(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
-    return APIResponse(data=report_service.outstanding(db))
+def outstanding(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return APIResponse(data=report_service.outstanding(db, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/empty-bottles", response_model=APIResponse[EmptyBottleReport])
-def empty_bottles(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
-    return APIResponse(data=report_service.empty_bottles(db))
+def empty_bottles(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return APIResponse(data=report_service.empty_bottles(db, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/product-sales", response_model=APIResponse[ProductSalesReport])
 def product_sales(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    db: Session = Depends(get_db), _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    return APIResponse(data=report_service.product_wise_sales(db, from_date, to_date))
+    return APIResponse(data=report_service.product_wise_sales(db, from_date, to_date, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/cash-book", response_model=APIResponse[CashBookReport])
 def cash_book(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    db: Session = Depends(get_db), _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    return APIResponse(data=report_service.cash_book(db, from_date, to_date))
+    return APIResponse(data=report_service.cash_book(db, from_date, to_date, do_id=resolve_do_filter(user, None)))
 
 
 @router.get("/gst", response_model=APIResponse[GstReport])
 def gst(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
-    db: Session = Depends(get_db), _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    return APIResponse(data=report_service.gst_summary(db, from_date, to_date))
+    return APIResponse(data=report_service.gst_summary(db, from_date, to_date, do_id=resolve_do_filter(user, None)))
 
 
 # ---------- Registers (per-day rollups) ----------
@@ -77,12 +78,12 @@ def register_daily(
     to_date: date = Query(..., alias="to"),
     do_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """One row per day inside the range:
     `date · bill # from · bill # to · qty · total`."""
     return APIResponse(
-        data=report_service.daily_register(db, from_date, to_date, do_id=do_id)
+        data=report_service.daily_register(db, from_date, to_date, do_id=resolve_do_filter(user, do_id))
     )
 
 
@@ -92,13 +93,13 @@ def register_do(
     to_date: date = Query(..., alias="to"),
     do_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """One row per (DO, day) inside the range — each DO grouped by day.
     Pass `do_id` to scope to a single Distributor Outlet.
     `do_code · do_name · date · bill # from · bill # to · qty · total`."""
     return APIResponse(
-        data=report_service.do_register(db, from_date, to_date, do_id=do_id)
+        data=report_service.do_register(db, from_date, to_date, do_id=resolve_do_filter(user, do_id))
     )
 
 
@@ -113,8 +114,9 @@ def export_register_daily(
     do_id: Optional[int] = Query(None),
     fmt: str = Query("excel", pattern="^(excel|pdf)$"),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    do_id = resolve_do_filter(user, do_id)
     if fmt == "excel":
         data = report_service.daily_register_excel(
             db, from_date, to_date, do_id=do_id)
@@ -139,8 +141,9 @@ def export_register_do(
     do_id: Optional[int] = Query(None),
     fmt: str = Query("excel", pattern="^(excel|pdf)$"),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    do_id = resolve_do_filter(user, do_id)
     suffix = f"-do{do_id}" if do_id else ""
     if fmt == "excel":
         data = report_service.do_register_excel(

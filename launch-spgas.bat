@@ -11,7 +11,7 @@ title S. P. Gas Billing Launcher
 echo =========================================
 echo   S. P. Gas Billing - Starting
 echo =========================================
-echo.
+echo
 
 REM --- Sanity: web build mojud hai? ---
 if not exist "%WEB_DIR%\main.dart.js" (

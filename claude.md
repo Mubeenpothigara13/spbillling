@@ -76,36 +76,7 @@ A comprehensive business management application for gas cylinder distribution bu
 - **Local Cache (Offline Support):** SQLite (via `sqflite` package in Flutter)
 - **Sync Strategy:** Local-first with background sync to cloud when online
 
-#### Local Dev — Docker Container (running)
-| Parameter | Value |
-|-----------|-------|
-| Container name | `spgasbill-postgres` |
-| Image | `postgres:16-alpine` |
-| Host | `localhost` |
-| Port | `5432` |
-| Database | `spgasbill` |
-| Username | `postgres` |
-| Password | `postgres` _(dev-only — rotate before production)_ |
-| Volume | `spgasbill-pgdata` (persistent) |
-| Restart policy | `unless-stopped` |
-
-**Connection string (dev):**
-```
-postgresql://postgres:postgres@localhost:5432/spgasbill
-```
-
-**Useful commands:**
-```bash
-# Start / stop
-docker start spgasbill-postgres
-docker stop spgasbill-postgres
-
-# Connect via psql
-docker exec -it spgasbill-postgres psql -U postgres -d spgasbill
-
-# Check status
-docker ps --filter name=spgasbill-postgres
-```
+Local dev DB connection details and Docker commands are in [`backend/CLAUDE.md`](./backend/CLAUDE.md) — don't duplicate them here.
 
 ### 2.4 Additional Libraries/Tools
 - **State Management:** Riverpod or Bloc (Flutter)
@@ -382,71 +353,9 @@ This gives a clear picture of how many empty cylinders each customer owes at any
 
 ---
 
-## 5. Database Schema (High-Level)
+## 5. Database Schema & API Endpoints
 
-### Tables
-1. `users` — App users with roles
-2. `customers` — Customer master
-3. `product_categories` — Category master
-4. `products` — Product master
-5. `product_variants` — Variants per product
-6. `bills` — Transaction headers
-7. `bill_items` — Line items
-8. `payments` — Standalone payments
-9. `empty_bottle_ledger` — Empty cylinder tracking per customer
-10. `cheques` — Cheque register
-11. `audit_logs` — All modifications logged
-12. `settings` — App configuration
-
-### Key Relationships
-- `customer` 1 → N `bills`
-- `bill` 1 → N `bill_items`
-- `product` 1 → N `product_variants`
-- `bill_item` N → 1 `product_variant`
-- `customer` 1 → 1 `empty_bottle_ledger` (running balance)
-
----
-
-## 6. API Endpoints (REST)
-
-### Authentication
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `POST /api/auth/refresh`
-
-### Customers
-- `GET /api/customers` — list with filters
-- `GET /api/customers/:id` — detail
-- `POST /api/customers` — create
-- `PUT /api/customers/:id` — update
-- `DELETE /api/customers/:id` — soft delete
-- `POST /api/customers/import` — bulk import
-- `GET /api/customers/search?q=` — search
-- `GET /api/customers/:id/ledger` — full history
-
-### Products
-- `GET /api/products`
-- `POST /api/products`
-- `PUT /api/products/:id`
-- `DELETE /api/products/:id`
-- `GET /api/products/variants`
-- `POST /api/products/variants`
-
-### Bills
-- `GET /api/bills?from=&to=&customerId=`
-- `POST /api/bills`
-- `GET /api/bills/:id`
-- `PUT /api/bills/:id`
-- `DELETE /api/bills/:id`
-- `GET /api/bills/print?from=&to=&format=9up`
-- `GET /api/bills/:id/pdf`
-
-### Reports
-- `GET /api/reports/daily-sales`
-- `GET /api/reports/outstanding`
-- `GET /api/reports/empty-bottles`
-- `GET /api/reports/cash-book`
-- `GET /api/reports/gst`
+Full model/table list (with constraints) and the complete endpoint map (with roles and service mapping) are in [`backend/CLAUDE.md`](./backend/CLAUDE.md) — kept there only, to avoid two copies drifting apart.
 
 ---
 

@@ -10,6 +10,10 @@ class AppUser {
   final String fullName;
   final String role; // admin | billing_staff | viewer
   final bool isActive;
+  // Set when this login is locked to one Distributor Outlet (null = S.P.
+  // Gas — sees every DO).
+  final int? doId;
+  final String? doCode;
 
   AppUser({
     required this.id,
@@ -17,6 +21,8 @@ class AppUser {
     required this.fullName,
     required this.role,
     required this.isActive,
+    this.doId,
+    this.doCode,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -25,6 +31,8 @@ class AppUser {
         fullName: j['full_name'] as String? ?? j['username'] as String,
         role: j['role'] as String,
         isActive: j['is_active'] as bool? ?? true,
+        doId: j['do_id'] as int?,
+        doCode: j['do_code'] as String?,
       );
 }
 
@@ -38,6 +46,8 @@ class LoginResponse {
   final String role;
   final int userId;
   final String fullName;
+  final int? doId;
+  final String? doCode;
 
   LoginResponse({
     required this.accessToken,
@@ -45,6 +55,8 @@ class LoginResponse {
     required this.role,
     required this.userId,
     required this.fullName,
+    this.doId,
+    this.doCode,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> j) => LoginResponse(
@@ -53,5 +65,7 @@ class LoginResponse {
         role: j['role'] as String,
         userId: j['user_id'] as int,
         fullName: j['full_name'] as String? ?? '',
+        doId: j['do_id'] as int?,
+        doCode: j['do_code'] as String?,
       );
 }

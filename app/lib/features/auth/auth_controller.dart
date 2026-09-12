@@ -15,6 +15,10 @@ class AuthState {
   final String? role;
   final String? fullName;
   final String? error;
+  // Set when this login is locked to one Distributor Outlet (null = S.P.
+  // Gas — sees every DO).
+  final int? doId;
+  final String? doCode;
 
   const AuthState({
     this.loading = false,
@@ -22,6 +26,8 @@ class AuthState {
     this.role,
     this.fullName,
     this.error,
+    this.doId,
+    this.doCode,
   });
 
   AuthState copyWith({
@@ -30,6 +36,8 @@ class AuthState {
     String? role,
     String? fullName,
     String? error,
+    int? doId,
+    String? doCode,
     bool clearError = false,
   }) =>
       AuthState(
@@ -38,6 +46,8 @@ class AuthState {
         role: role ?? this.role,
         fullName: fullName ?? this.fullName,
         error: clearError ? null : (error ?? this.error),
+        doId: doId ?? this.doId,
+        doCode: doCode ?? this.doCode,
       );
 }
 
@@ -57,7 +67,12 @@ class AuthController extends StateNotifier<AuthState> {
     if (token != null && token.isNotEmpty) {
       final role = await storage.readRole();
       final name = await storage.readFullName();
-      state = state.copyWith(authenticated: true, role: role, fullName: name);
+      final doId = await storage.readDoId();
+      final doCode = await storage.readDoCode();
+      state = state.copyWith(
+        authenticated: true, role: role, fullName: name,
+        doId: doId, doCode: doCode,
+      );
     }
   }
 
@@ -74,12 +89,16 @@ class AuthController extends StateNotifier<AuthState> {
             role: resp.role,
             userId: resp.userId,
             fullName: resp.fullName,
+            doId: resp.doId,
+            doCode: resp.doCode,
           );
       state = AuthState(
         loading: false,
         authenticated: true,
         role: resp.role,
         fullName: resp.fullName,
+        doId: resp.doId,
+        doCode: resp.doCode,
       );
       return true;
     } catch (e) {

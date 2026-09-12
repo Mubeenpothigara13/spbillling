@@ -12,7 +12,7 @@ from app.schemas.product import (
     VariantCreate, VariantOut, VariantUpdate,
 )
 from app.services import product_service
-from app.utils.auth import get_current_user, require_admin
+from app.utils.auth import get_current_user, require_global_admin
 from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -31,21 +31,21 @@ def list_categories(
 
 @router.post("/categories", response_model=APIResponse[CategoryOut])
 def create_category(payload: CategoryCreate, db: Session = Depends(get_db),
-                    user: User = Depends(require_admin)):
+                    user: User = Depends(require_global_admin)):
     cat = product_service.create_category(db, payload, user.id)
     return APIResponse(data=CategoryOut.model_validate(cat), message="Category created")
 
 
 @router.put("/categories/{cat_id}", response_model=APIResponse[CategoryOut])
 def update_category(cat_id: int, payload: CategoryUpdate,
-                    db: Session = Depends(get_db), user: User = Depends(require_admin)):
+                    db: Session = Depends(get_db), user: User = Depends(require_global_admin)):
     cat = product_service.update_category(db, cat_id, payload, user.id)
     return APIResponse(data=CategoryOut.model_validate(cat), message="Category updated")
 
 
 @router.delete("/categories/{cat_id}", response_model=APIResponse)
 def delete_category(cat_id: int, db: Session = Depends(get_db),
-                    user: User = Depends(require_admin)):
+                    user: User = Depends(require_global_admin)):
     product_service.delete_category(db, cat_id, user.id)
     return APIResponse(message="Category deleted")
 
@@ -75,21 +75,21 @@ def get_product(product_id: int, db: Session = Depends(get_db),
 
 @router.post("", response_model=APIResponse[ProductOut])
 def create_product(payload: ProductCreate, db: Session = Depends(get_db),
-                   user: User = Depends(require_admin)):
+                   user: User = Depends(require_global_admin)):
     p = product_service.create_product(db, payload, user.id)
     return APIResponse(data=ProductOut.model_validate(p), message="Product created")
 
 
 @router.put("/{product_id}", response_model=APIResponse[ProductOut])
 def update_product(product_id: int, payload: ProductUpdate,
-                   db: Session = Depends(get_db), user: User = Depends(require_admin)):
+                   db: Session = Depends(get_db), user: User = Depends(require_global_admin)):
     p = product_service.update_product(db, product_id, payload, user.id)
     return APIResponse(data=ProductOut.model_validate(p), message="Product updated")
 
 
 @router.delete("/{product_id}", response_model=APIResponse)
 def delete_product(product_id: int, db: Session = Depends(get_db),
-                   user: User = Depends(require_admin)):
+                   user: User = Depends(require_global_admin)):
     product_service.delete_product(db, product_id, user.id)
     return APIResponse(message="Product deactivated")
 
@@ -110,20 +110,20 @@ def list_variants(
 
 @router.post("/variants", response_model=APIResponse[VariantOut])
 def create_variant(payload: VariantCreate, db: Session = Depends(get_db),
-                   user: User = Depends(require_admin)):
+                   user: User = Depends(require_global_admin)):
     v = product_service.create_variant(db, payload, user.id)
     return APIResponse(data=VariantOut.model_validate(v), message="Variant created")
 
 
 @router.put("/variants/{variant_id}", response_model=APIResponse[VariantOut])
 def update_variant(variant_id: int, payload: VariantUpdate,
-                   db: Session = Depends(get_db), user: User = Depends(require_admin)):
+                   db: Session = Depends(get_db), user: User = Depends(require_global_admin)):
     v = product_service.update_variant(db, variant_id, payload, user.id)
     return APIResponse(data=VariantOut.model_validate(v), message="Variant updated")
 
 
 @router.delete("/variants/{variant_id}", response_model=APIResponse)
 def delete_variant(variant_id: int, db: Session = Depends(get_db),
-                   user: User = Depends(require_admin)):
+                   user: User = Depends(require_global_admin)):
     product_service.delete_variant(db, variant_id, user.id)
     return APIResponse(message="Variant deactivated")

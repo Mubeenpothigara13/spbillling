@@ -10,7 +10,7 @@ from app.models.audit import AuditAction, AuditLog
 from app.models.user import User
 from app.schemas.audit import AuditLogOut
 from app.schemas.common import PaginatedResponse
-from app.utils.auth import require_admin
+from app.utils.auth import require_global_admin
 from app.utils.pagination import paginate
 
 router = APIRouter(prefix="/audit-logs", tags=["Audit Logs"])
@@ -27,7 +27,7 @@ def list_audit(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _admin: User = Depends(require_global_admin),
 ):
     stmt = select(AuditLog).order_by(AuditLog.created_at.desc())
     if entity_type:

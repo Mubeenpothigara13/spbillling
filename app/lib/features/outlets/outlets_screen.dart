@@ -121,7 +121,11 @@ class _OutletsScreenState extends ConsumerState<OutletsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = ref.watch(authControllerProvider).role == 'admin';
+    final auth = ref.watch(authControllerProvider);
+    // Managing the DO directory (create/edit/delete/toggle) is S.P. Gas
+    // only — a DO-scoped admin login can view its own outlet here but the
+    // backend rejects mutations from it (require_global_admin).
+    final isAdmin = auth.role == 'admin' && auth.doCode == null;
     return Padding(
       padding: const EdgeInsets.all(DT.s24),
       child: Column(

@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditAction
+from app.models.distributor_outlet import DistributorOutlet
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.audit import write_audit
@@ -20,11 +21,20 @@ def get_user(db: Session, user_id: int) -> User:
     return u
 
 
+def _validate_do(db: Session, do_id: int | None) -> None:
+    if do_id is None:
+        return
+    do = db.get(DistributorOutlet, do_id)
+    if not do or do.is_deleted:
+        raise HTTPException(status_code=400, detail=f"Distributor outlet {do_id} not found")
+
+
 def create_user(db: Session, payload: UserCreate, actor_id: int) -> User:
     if db.scalar(select(User).where(User.username == payload.username)):
         raise HTTPException(status_code=400, detail="Username already exists")
     if payload.email and db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status_code=400, detail="Email already exists")
+    _validate_do(db, payload.do_id)
     u = User(
         username=payload.username,
         email=payload.email,
@@ -32,6 +42,7 @@ def create_user(db: Session, payload: UserCreate, actor_id: int) -> User:
         full_name=payload.full_name,
         role=payload.role,
         is_active=payload.is_active,
+        do_id=payload.do_id,
     )
     db.add(u)
     db.flush()
@@ -48,6 +59,8 @@ def update_user(db: Session, user_id: int, payload: UserUpdate, actor_id: int) -
     data = payload.model_dump(exclude_unset=True)
     if "password" in data and data["password"]:
         u.password_hash = hash_password(data.pop("password"))
+    if "do_id" in data:
+        _validate_do(db, data["do_id"])
     for k, v in data.items():
         setattr(u, k, v)
     write_audit(db, entity_type="user", entity_id=u.id,

@@ -12,10 +12,12 @@ from app.models.audit import AuditAction
 from app.models.customer import Customer, CustomerStatus, CustomerType
 from app.models.distributor_outlet import DistributorOutlet
 from app.models.empty_bottle import EmptyBottleTransaction, EmptyBottleTxnType
+from app.models.user import User
 from app.schemas.customer import (
     CustomerCreate, CustomerImportError, CustomerImportResult, CustomerUpdate,
 )
 from app.utils.audit import write_audit
+from app.utils.scope import enforce_do_scope
 
 
 def _check_mobile_unique(
@@ -64,7 +66,11 @@ def _validate_do(db: Session, do_id: int) -> DistributorOutlet:
     return do
 
 
-def create_customer(db: Session, payload: CustomerCreate, user_id: int) -> Customer:
+def create_customer(db: Session, payload: CustomerCreate, user_id: int, user: Optional[User] = None) -> Customer:
+    if user is not None and user.do_id is not None:
+        # DO-scoped logins can only ever create their own DO's customers —
+        # ignore whatever do_id the client sent.
+        payload.do_id = user.do_id
     _check_mobile_unique(db, payload.mobile)
     _check_consumer_number_unique(db, payload.consumer_number)
     _validate_do(db, payload.do_id)
@@ -117,8 +123,11 @@ def create_customer(db: Session, payload: CustomerCreate, user_id: int) -> Custo
     return cust
 
 
-def update_customer(db: Session, customer_id: int, payload: CustomerUpdate, user_id: int) -> Customer:
-    cust = get_customer(db, customer_id)
+def update_customer(
+    db: Session, customer_id: int, payload: CustomerUpdate, user_id: int,
+    user: Optional[User] = None,
+) -> Customer:
+    cust = get_customer(db, customer_id, user=user)
     data = payload.model_dump(exclude_unset=True)
 
     if "mobile" in data:
@@ -132,7 +141,10 @@ def update_customer(db: Session, customer_id: int, payload: CustomerUpdate, user
     if "consumer_number" in data and data["consumer_number"] != cust.consumer_number:
         _check_consumer_number_unique(db, data["consumer_number"], exclude_id=cust.id)
 
-    if "do_id" in data and data["do_id"] != cust.do_id:
+    if user is not None and user.do_id is not None:
+        # DO-scoped logins can't move a customer to another DO.
+        data.pop("do_id", None)
+    elif "do_id" in data and data["do_id"] != cust.do_id:
         _validate_do(db, data["do_id"])
 
     changes = {}
@@ -150,15 +162,17 @@ def update_customer(db: Session, customer_id: int, payload: CustomerUpdate, user
     return cust
 
 
-def get_customer(db: Session, customer_id: int) -> Customer:
+def get_customer(db: Session, customer_id: int, user: Optional[User] = None) -> Customer:
     cust = db.get(Customer, customer_id)
     if not cust or cust.is_deleted:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if user is not None:
+        enforce_do_scope(user, cust.do_id)
     return cust
 
 
-def soft_delete_customer(db: Session, customer_id: int, user_id: int) -> None:
-    cust = get_customer(db, customer_id)
+def soft_delete_customer(db: Session, customer_id: int, user_id: int, user: Optional[User] = None) -> None:
+    cust = get_customer(db, customer_id, user=user)
     cust.is_deleted = True
     cust.status = CustomerStatus.INACTIVE
     write_audit(db, entity_type="customer", entity_id=cust.id,
@@ -166,8 +180,8 @@ def soft_delete_customer(db: Session, customer_id: int, user_id: int) -> None:
     db.commit()
 
 
-def set_customer_active(db: Session, customer_id: int, active: bool, user_id: int) -> Customer:
-    cust = get_customer(db, customer_id)
+def set_customer_active(db: Session, customer_id: int, active: bool, user_id: int, user: Optional[User] = None) -> Customer:
+    cust = get_customer(db, customer_id, user=user)
     new_status = CustomerStatus.ACTIVE if active else CustomerStatus.INACTIVE
     if cust.status == new_status:
         return cust
@@ -234,7 +248,7 @@ def list_customers(
 
 
 def bulk_soft_delete_customers(
-    db: Session, customer_ids: list[int], user_id: int
+    db: Session, customer_ids: list[int], user_id: int, user: Optional[User] = None
 ) -> dict:
     """Soft-delete many customers; missing/already-deleted ids are ignored."""
     if not customer_ids:
@@ -245,6 +259,9 @@ def bulk_soft_delete_customers(
     deleted = 0
     skipped = 0
     for cust in rows:
+        if user is not None and user.do_id is not None and cust.do_id != user.do_id:
+            skipped += 1
+            continue
         if cust.is_deleted:
             skipped += 1
             continue
@@ -261,7 +278,7 @@ def bulk_soft_delete_customers(
     return {"deleted": deleted, "skipped": skipped}
 
 
-def search_customers(db: Session, q: str, limit: int = 20) -> list[Customer]:
+def search_customers(db: Session, q: str, limit: int = 20, do_id: Optional[int] = None) -> list[Customer]:
     if not q or len(q.strip()) < 2:
         return []
     like = f"%{q.strip()}%"
@@ -278,6 +295,8 @@ def search_customers(db: Session, q: str, limit: int = 20) -> list[Customer]:
         .order_by(Customer.name.asc())
         .limit(limit)
     )
+    if do_id is not None:
+        stmt = stmt.where(Customer.do_id == do_id)
     return list(db.scalars(stmt).all())
 
 
@@ -305,7 +324,7 @@ def _parse_excel_date(raw) -> Optional[date]:
 
 
 def import_customers_from_excel(
-    db: Session, file_bytes: bytes, user_id: int
+    db: Session, file_bytes: bytes, user_id: int, user: Optional[User] = None
 ) -> CustomerImportResult:
     wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
     ws = wb.active
@@ -318,8 +337,11 @@ def import_customers_from_excel(
     imported = 0
     skipped = 0
 
+    scoped_do_id = user.do_id if user is not None else None
+
     # Build a code → DO map for lookups; first active DO is the fallback when
-    # the row leaves the DO column blank.
+    # the row leaves the DO column blank. DO-scoped logins always import
+    # into their own DO regardless of what the sheet's DO column says.
     active_dos = list(db.scalars(
         select(DistributorOutlet).where(
             DistributorOutlet.is_deleted.is_(False),
@@ -329,7 +351,7 @@ def import_customers_from_excel(
     if not active_dos:
         raise HTTPException(status_code=400, detail="No active Distributor Outlet exists. Create one before importing.")
     do_by_code = {d.code.upper(): d for d in active_dos}
-    fallback_do = active_dos[0]
+    fallback_do = next((d for d in active_dos if d.id == scoped_do_id), active_dos[0])
 
     for idx, raw in enumerate(rows[1:], start=2):
         row = {headers[i]: (raw[i] if i < len(raw) else None) for i in range(len(headers))}
@@ -346,18 +368,23 @@ def import_customers_from_excel(
             if mobile and (not mobile.isdigit() or len(mobile) < 10):
                 raise ValueError("Mobile must be 10+ digits when provided")
 
-            # DO column: accept "DO" or "DO_Code" header. Empty → fallback DO.
-            do_raw = (row.get("DO") or row.get("DO_Code") or "")
-            do_code = str(do_raw).strip().upper()
-            if do_code:
-                do = do_by_code.get(do_code)
-                if not do:
-                    raise ValueError(
-                        f"DO code '{do_code}' not found (active codes: "
-                        f"{', '.join(sorted(do_by_code.keys()))})"
-                    )
-            else:
+            if scoped_do_id is not None:
+                # DO-scoped login — every imported row goes to their own DO,
+                # regardless of what the sheet's DO column says.
                 do = fallback_do
+            else:
+                # DO column: accept "DO" or "DO_Code" header. Empty → fallback DO.
+                do_raw = (row.get("DO") or row.get("DO_Code") or "")
+                do_code = str(do_raw).strip().upper()
+                if do_code:
+                    do = do_by_code.get(do_code)
+                    if not do:
+                        raise ValueError(
+                            f"DO code '{do_code}' not found (active codes: "
+                            f"{', '.join(sorted(do_by_code.keys()))})"
+                        )
+                else:
+                    do = fallback_do
 
             ctype_raw = (str(row.get("Type", "") or "domestic")).strip().lower()
             ctype = CustomerType.COMMERCIAL if ctype_raw.startswith("c") else CustomerType.DOMESTIC
@@ -421,7 +448,7 @@ def import_customers_from_excel(
     return CustomerImportResult(imported=imported, skipped=skipped, errors=errors)
 
 
-def export_customers_to_excel(db: Session) -> bytes:
+def export_customers_to_excel(db: Session, do_id: Optional[int] = None) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Customers"
@@ -431,7 +458,10 @@ def export_customers_to_excel(db: Session) -> bytes:
         "Current Balance", "Empty Bottles", "Registration Date",
     ]
     ws.append(headers)
-    for cust in db.scalars(select(Customer).where(Customer.is_deleted.is_(False)).order_by(Customer.name)):
+    stmt = select(Customer).where(Customer.is_deleted.is_(False)).order_by(Customer.name)
+    if do_id is not None:
+        stmt = stmt.where(Customer.do_id == do_id)
+    for cust in db.scalars(stmt):
         do = cust.distributor_outlet
         ws.append([
             cust.id, cust.consumer_number,
