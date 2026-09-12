@@ -28,6 +28,7 @@ const _entries = [
   _NavEntry('New Bill', Icons.receipt_long_outlined, '/bills/new'),
   _NavEntry('Daily Register', Icons.calendar_month_outlined, '/register/daily'),
   _NavEntry('DO Register', Icons.assignment_outlined, '/register/do'),
+  _NavEntry('Users', Icons.manage_accounts_outlined, '/users'),
 ];
 
 /// Frames the current page with the persistent sidebar and top bar.
@@ -81,12 +82,18 @@ bool _isActive(String entryPath, String currentPath) {
   return true;
 }
 
-class _Sidebar extends StatelessWidget {
+class _Sidebar extends ConsumerWidget {
   final String currentPath;
   const _Sidebar({required this.currentPath});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authControllerProvider);
+    // Users management is S.P. Gas only — hide the nav entry for everyone
+    // else rather than let them land on a screen that just says "no".
+    final isGlobalAdmin = auth.role == 'admin' && auth.doCode == null;
+    final visibleEntries =
+        _entries.where((e) => e.path != '/users' || isGlobalAdmin).toList();
     return Container(
       width: DT.sidebarWidth,
       decoration: const BoxDecoration(
@@ -127,7 +134,7 @@ class _Sidebar extends StatelessWidget {
           ),
           const Divider(height: 1, color: DT.divider),
           const SizedBox(height: DT.s8),
-          for (final e in _entries)
+          for (final e in visibleEntries)
             _NavTile(entry: e, active: _isActive(e.path, currentPath)),
           const Spacer(),
           Padding(

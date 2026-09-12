@@ -25,6 +25,7 @@ import '../../features/bills/bills_batch_pdf_screen.dart';
 import '../../features/bills/bills_screen.dart';
 import '../../features/registers/daily_register_screen.dart';
 import '../../features/registers/do_register_screen.dart';
+import '../../features/users/users_screen.dart';
 
 /// Builds the app's [GoRouter], re-evaluating auth redirects on state change.
 final routerProvider = Provider<GoRouter>((ref) {
@@ -90,6 +91,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/register/do',
               builder: (_, __) => const DoRegisterScreen()),
+          GoRoute(path: '/users', builder: (_, __) => const UsersScreen()),
         ],
       ),
     ],
