@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 from fastapi import HTTPException
@@ -7,8 +8,10 @@ from sqlalchemy.orm import Session
 from app.models.audit import AuditAction
 from app.models.customer import Customer, CustomerStatus
 from app.models.distributor_outlet import DistributorOutlet
+from app.models.user import User, UserRole
 from app.schemas.distributor_outlet import DOCreate, DOUpdate
 from app.utils.audit import write_audit
+from app.utils.auth import hash_password
 
 
 def _check_code_unique(db: Session, code: str, exclude_id: Optional[int] = None) -> None:
@@ -39,7 +42,37 @@ def get_do(db: Session, do_id: int) -> DistributorOutlet:
     return do
 
 
-def create_do(db: Session, payload: DOCreate, user_id: int) -> DistributorOutlet:
+def _slugify_username(owner_name: str) -> str:
+    base = re.sub(r"[^a-z0-9]", "", owner_name.lower())
+    return base or "do"
+
+
+def _create_do_login(db: Session, do: DistributorOutlet) -> tuple[User, str]:
+    """Auto-provisions the DO's login: username from the owner's name
+    (deduped with a numeric suffix on collision), password `<CODE>@123`.
+    Full CRUD on its own customers/bills/products — never company-wide
+    actions (those all require a global admin regardless of this role)."""
+    base_username = _slugify_username(do.owner_name)
+    username = base_username
+    suffix = 1
+    while db.scalar(select(User).where(User.username == username)):
+        suffix += 1
+        username = f"{base_username}{suffix}"
+    password = f"{do.code}@123"
+    user = User(
+        username=username,
+        password_hash=hash_password(password),
+        full_name=do.owner_name,
+        role=UserRole.ADMIN,
+        is_active=True,
+        do_id=do.id,
+    )
+    db.add(user)
+    db.flush()
+    return user, password
+
+
+def create_do(db: Session, payload: DOCreate, user_id: int) -> tuple[DistributorOutlet, str, str]:
     _check_code_unique(db, payload.code)
     do = DistributorOutlet(
         code=payload.code,
@@ -49,12 +82,14 @@ def create_do(db: Session, payload: DOCreate, user_id: int) -> DistributorOutlet
     )
     db.add(do)
     db.flush()
+    login_user, login_password = _create_do_login(db, do)
     write_audit(db, entity_type="distributor_outlet", entity_id=do.id,
                 action=AuditAction.CREATE, user_id=user_id,
-                changes={"code": do.code, "owner_name": do.owner_name})
+                changes={"code": do.code, "owner_name": do.owner_name,
+                         "login_username": login_user.username})
     db.commit()
     db.refresh(do)
-    return do
+    return do, login_user.username, login_password
 
 
 def update_do(db: Session, do_id: int, payload: DOUpdate, user_id: int) -> DistributorOutlet:

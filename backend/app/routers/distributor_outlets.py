@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.user import User
 from app.schemas.common import APIResponse, PaginatedResponse
-from app.schemas.distributor_outlet import DOCreate, DORead, DOSearchResult, DOUpdate
+from app.schemas.distributor_outlet import (
+    DOCreate, DOCreateResult, DORead, DOSearchResult, DOUpdate,
+)
 from app.services import distributor_outlet_service as svc
 from app.utils.auth import get_current_user, require_global_admin
 from app.utils.pagination import paginate
@@ -50,14 +52,22 @@ def get_outlet(
     return APIResponse(data=DORead.model_validate(do))
 
 
-@router.post("", response_model=APIResponse[DORead])
+@router.post("", response_model=APIResponse[DOCreateResult])
 def create_outlet(
     payload: DOCreate,
     db: Session = Depends(get_db),
     user: User = Depends(require_global_admin),
 ):
-    do = svc.create_do(db, payload, user.id)
-    return APIResponse(data=DORead.model_validate(do), message="DO created")
+    do, username, password = svc.create_do(db, payload, user.id)
+    result = DOCreateResult(
+        outlet=DORead.model_validate(do),
+        login_username=username,
+        login_password=password,
+    )
+    return APIResponse(
+        data=result,
+        message=f"DO created — login {username} / {password}",
+    )
 
 
 @router.put("/{do_id}", response_model=APIResponse[DORead])

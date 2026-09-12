@@ -59,3 +59,13 @@ class DOSearchResult(BaseModel):
     owner_name: str
     location: str
     is_active: bool
+
+
+class DOCreateResult(BaseModel):
+    """Returned only from `POST /distributor-outlets` — carries the
+    auto-generated login credential in plain text since it can never be
+    read back again once hashed. Never reuse this shape for GET/list."""
+
+    outlet: DORead
+    login_username: str
+    login_password: str

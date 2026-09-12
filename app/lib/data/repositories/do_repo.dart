@@ -18,6 +18,20 @@ class DOPage {
   });
 }
 
+/// Result of creating an outlet — carries the auto-generated login
+/// credential in plain text since it can never be read back again once
+/// hashed. Show it to the caller immediately, then discard it.
+class DOCreateResult {
+  final DistributorOutlet outlet;
+  final String loginUsername;
+  final String loginPassword;
+  DOCreateResult({
+    required this.outlet,
+    required this.loginUsername,
+    required this.loginPassword,
+  });
+}
+
 /// Distributor Outlet CRUD + typeahead search.
 class DORepo {
   final ApiClient _api;
@@ -65,11 +79,18 @@ class DORepo {
     return DistributorOutlet.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
-  /// Creates a new outlet. Backend enforces unique `code`.
-  Future<DistributorOutlet> create(DistributorOutlet outlet) async {
-    final data = await _api.request('POST', '/distributor-outlets',
-        data: outlet.toCreateJson());
-    return DistributorOutlet.fromJson(Map<String, dynamic>.from(data as Map));
+  /// Creates a new outlet. Backend enforces unique `code` and also
+  /// auto-provisions that outlet's login (username derived from the owner
+  /// name, password `<CODE>@123`) — returned here so the caller can show
+  /// it once.
+  Future<DOCreateResult> create(DistributorOutlet outlet) async {
+    final data = Map<String, dynamic>.from(
+        await _api.request('POST', '/distributor-outlets', data: outlet.toCreateJson()) as Map);
+    return DOCreateResult(
+      outlet: DistributorOutlet.fromJson(Map<String, dynamic>.from(data['outlet'] as Map)),
+      loginUsername: data['login_username'] as String,
+      loginPassword: data['login_password'] as String,
+    );
   }
 
   /// Updates mutable fields (owner, location, code). Active flag toggles

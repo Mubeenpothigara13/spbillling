@@ -18,7 +18,7 @@ from app.services.pdf_service import (
     render_bills_9up_pdf,
     render_bills_preprinted_overlay_pdf,
 )
-from app.utils.auth import get_current_user, require_global_admin, require_staff
+from app.utils.auth import get_current_user, require_admin, require_global_admin, require_staff
 from app.utils.pagination import paginate
 from app.utils.scope import resolve_do_filter
 
@@ -82,7 +82,7 @@ def update_bill(bill_id: int, payload: BillUpdate, db: Session = Depends(get_db)
 
 @router.delete("/{bill_id}", response_model=APIResponse[dict])
 def delete_bill(bill_id: int, db: Session = Depends(get_db),
-                user: User = Depends(require_global_admin)):
+                user: User = Depends(require_admin)):
     """Hard-delete the bill so its number is free for the next bill.
     Side-effects (customer balance, empty-bottle ledger, stock, cheques,
     bill-linked payments) are reversed first."""
@@ -97,7 +97,7 @@ def delete_bill(bill_id: int, db: Session = Depends(get_db),
 def bulk_delete_bills(
     ids: list[int] = Body(..., embed=True, min_length=1),
     db: Session = Depends(get_db),
-    user: User = Depends(require_global_admin),
+    user: User = Depends(require_admin),
 ):
     result = billing_service.bulk_delete_bills(db, ids, user.id, user=user)
     return APIResponse(

@@ -89,11 +89,14 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
-    // Users management is S.P. Gas only — hide the nav entry for everyone
-    // else rather than let them land on a screen that just says "no".
+    // Users and Distributor-Outlets management are S.P. Gas only — hide
+    // those nav entries for a DO-scoped login rather than let them land on
+    // a screen that just says "no" (or, for outlets, only ever shows itself).
     final isGlobalAdmin = auth.role == 'admin' && auth.doCode == null;
-    final visibleEntries =
-        _entries.where((e) => e.path != '/users' || isGlobalAdmin).toList();
+    const globalOnlyPaths = {'/users', '/outlets'};
+    final visibleEntries = _entries
+        .where((e) => !globalOnlyPaths.contains(e.path) || isGlobalAdmin)
+        .toList();
     return Container(
       width: DT.sidebarWidth,
       decoration: const BoxDecoration(

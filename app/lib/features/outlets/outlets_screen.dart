@@ -59,13 +59,36 @@ class _OutletsScreenState extends ConsumerState<OutletsScreen> {
     });
   }
 
-  /// Opens the add/edit dialog. Reloads the list on successful save.
+  /// Opens the add/edit dialog. Reloads the list on successful save, and
+  /// on a fresh create, shows the auto-generated login once (it can never
+  /// be retrieved again after this).
   Future<void> _openForm({DistributorOutlet? existing}) async {
-    final saved = await showDialog<bool>(
+    final result = await showDialog<Object?>(
       context: context,
       builder: (_) => _OutletFormDialog(existing: existing),
     );
-    if (saved == true) _load();
+    if (result == null) return;
+    _load();
+    if (result is DOCreateResult && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Outlet created'),
+          content: SelectableText(
+            'Login for ${result.outlet.code} — ${result.outlet.ownerName}:\n\n'
+            'Username: ${result.loginUsername}\n'
+            'Password: ${result.loginPassword}\n\n'
+            'Save this now — the password cannot be shown again after you close this.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _toggleActive(DistributorOutlet o) async {
@@ -370,11 +393,12 @@ class _OutletFormDialogState extends ConsumerState<_OutletFormDialog> {
       );
       final repo = ref.read(doRepoProvider);
       if (widget.existing == null) {
-        await repo.create(outlet);
+        final result = await repo.create(outlet);
+        if (mounted) Navigator.of(context).pop(result);
       } else {
         await repo.update(widget.existing!.id, outlet);
+        if (mounted) Navigator.of(context).pop(true);
       }
-      if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {
         _saving = false;

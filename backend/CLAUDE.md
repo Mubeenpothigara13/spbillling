@@ -60,27 +60,29 @@ backend/
 | GET | `/api/customers/search?q=` | Autocomplete by name/mobile | any |
 | GET | `/api/customers/{id}` | Detail | any |
 | POST / PUT | `/api/customers[, /{id}]` | Create / update | staff+ |
-| DELETE | `/api/customers/{id}` | Soft-delete | **global admin** |
-| POST | `/api/customers/bulk-delete` | Bulk soft-delete | **global admin** |
-| PATCH | `/api/customers/{id}/active` | Activate/deactivate | **global admin** |
+| DELETE | `/api/customers/{id}` | Soft-delete | admin |
+| POST | `/api/customers/bulk-delete` | Bulk soft-delete | admin |
+| PATCH | `/api/customers/{id}/active` | Activate/deactivate | admin |
 | POST | `/api/customers/import` | Bulk Excel import | staff+ |
 | GET | `/api/customers/export/excel` | Export Excel | any |
 
 ### Products · `routers/products.py` → `services/product_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| POST | `/api/products/categories` | Create category | staff+ (any DO can add to the shared catalog) |
-| PUT / DELETE | `/api/products/categories/{id}` | Edit/deactivate category | **global admin** |
+| POST | `/api/products/categories` | Create category | staff+ |
+| PUT / DELETE | `/api/products/categories/{id}` | Edit/deactivate category | admin |
 | POST | `/api/products` | Create product | staff+ |
-| PUT / DELETE | `/api/products/{id}` | Edit/deactivate product | **global admin** |
+| PUT / DELETE | `/api/products/{id}` | Edit/deactivate product | admin |
 | GET  | `/api/products/variants/list` | All variants paginated | any |
 | POST | `/api/products/variants` | Create variant (price, GST, stock) | staff+ |
-| PUT / DELETE | `/api/products/variants/{id}` | Edit/deactivate variant | **global admin** |
+| PUT / DELETE | `/api/products/variants/{id}` | Edit/deactivate variant | admin |
 
 Note: the product catalog is **not** DO-scoped — it's one shared list every
 DO bills against. Any staff+ login (including a DO-scoped one) can add a
-new category/product/variant, but only S.P. Gas can edit or deactivate an
-existing entry, since that could affect every other DO's pricing too.
+new category/product/variant, and any admin login (including a DO-scoped
+one) can edit or deactivate an existing entry — which means one DO's
+admin can change pricing/GST that every other DO also bills against. This
+is a deliberate simplicity trade-off, not an oversight.
 
 ### Bills · `routers/bills.py` → `services/billing_service.py` + `services/pdf_service.py`
 | Method | Path | Purpose | Role |
@@ -88,8 +90,8 @@ existing entry, since that could affect every other DO's pricing too.
 | GET | `/api/bills` | List (by customer / date / status) | any |
 | POST / PUT | `/api/bills[, /{id}]` | Create / edit — runs GST, empty-bottle, stock, customer-balance updates | staff+ |
 | GET | `/api/bills/{id}` | Detail with items | any |
-| DELETE | `/api/bills/{id}` | Hard-delete (reverses balance/stock/empty, frees the bill #) | **global admin** |
-| POST | `/api/bills/bulk-delete` | Bulk hard-delete | **global admin** |
+| DELETE | `/api/bills/{id}` | Hard-delete, DO-scoped (reverses balance/stock/empty, frees the bill #) | admin |
+| POST | `/api/bills/bulk-delete` | Bulk hard-delete, DO-scoped | admin |
 | GET | `/api/bills/{id}/pdf` | Single A4 PDF | any |
 | GET | `/api/bills/print/batch?from=&to=&format=9up` | Batch 9-up or single | any |
 | GET | `/api/bills/customer/{id}/ledger` | Full customer account ledger | any |
@@ -100,7 +102,7 @@ existing entry, since that could affect every other DO's pricing too.
 |---|---|---|---|
 | GET / POST | `/api/payments` | List / record standalone receipt | staff+ |
 | GET / PUT | `/api/payments/{id}` | Detail / update | staff+ |
-| DELETE | `/api/payments/{id}` | Delete | **global admin** |
+| DELETE | `/api/payments/{id}` | Delete | admin |
 
 ### Cheques · `routers/cheques.py` → `services/payment_service.py`
 | Method | Path | Purpose | Role |
@@ -173,7 +175,8 @@ existing entry, since that could affect every other DO's pricing too.
 - Roles: `admin` · `billing_staff` · `viewer`.
 - Guards (in `app/utils/auth.py`): `get_current_user` (any), `require_staff` (admin+staff), `require_admin` (admin — DO-scoped or global), `require_global_admin` (admin AND `do_id is None`, i.e. S.P. Gas itself). Apply via `Depends()` in the router signature.
 - **Multi-tenant DO scoping** (`app/utils/scope.py`): `User.do_id` is `NULL` for a global S.P. Gas login (sees/manages every DO) or set to lock a login to one Distributor Outlet. `enforce_do_scope(user, entity_do_id)` 404s a DO-scoped user reaching another DO's row; `resolve_do_filter(user, requested_do_id)` pins list/report filters to the caller's own DO. Applied throughout customers/bills/payments/cheques/reports.
-- **DO logins are intentionally capped below "admin", even if their `role` is `admin`.** A DO-scoped login (any role) can create/edit bills, customers, and the shared product catalog (`require_staff` — day-to-day billing work) but is **never** allowed to delete/deactivate a customer, delete a bill, delete a payment, manage other DOs, manage users, edit the product catalog, change settings, view audit logs, or reset bills — those all require `require_global_admin` (admin **and** `do_id is None`), regardless of the DO login's own role. So `role=admin` on a DO-scoped user only means "no `viewer` read-only restriction" — it does not grant admin-only actions. Use `require_global_admin` (not `require_admin`) for anything destructive or company-wide; use `require_staff` for routine per-DO billing work.
+- **A DO-scoped `admin` login has full CRUD over its own customers/bills/payments and the shared product catalog** (`require_admin`/`require_staff` — same guards as a global login) **but never anything company-wide or cross-DO**: managing other DOs, managing users, settings, audit logs, and `/bills/reset` all require `require_global_admin` (admin **and** `do_id is None`), regardless of the DO login's own role. `enforce_do_scope` also keeps a DO-scoped admin's deletes/edits confined to its own DO's rows (e.g. `DELETE /bills/{id}` 404s on another DO's bill before the delete even runs). Use `require_global_admin` for anything company-wide; `require_admin`/`require_staff` for everything else.
+- **Creating a DO auto-provisions its login** (`distributor_outlet_service._create_do_login`, called from `create_do`): username is the owner's name lowercased/slugified (deduped with a numeric suffix on collision), password is `<CODE>@123`, role `admin`, `do_id` set to the new outlet. `POST /distributor-outlets` returns this credential in plain text once (`DOCreateResult.login_username`/`login_password`) — it is never retrievable again after that response, since only the hash is stored.
 - **Default admin (from `scripts/seed.py`):** `admin` / `admin123` — rotate before production.
 
 ---
