@@ -28,6 +28,7 @@ const _globalEntries = [
   _NavEntry('New Bill', Icons.receipt_long_outlined, '/bills/new'),
   _NavEntry('Daily Register', Icons.calendar_month_outlined, '/register/daily'),
   _NavEntry('DO Register', Icons.assignment_outlined, '/register/do'),
+  _NavEntry('Indents', Icons.local_shipping_outlined, '/indents'),
   _NavEntry('Users', Icons.manage_accounts_outlined, '/users'),
 ];
 

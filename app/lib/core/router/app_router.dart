@@ -27,6 +27,7 @@ import '../../features/registers/daily_register_screen.dart';
 import '../../features/registers/do_register_screen.dart';
 import '../../features/users/users_screen.dart';
 import '../../features/indent/indent_screen.dart';
+import '../../features/indents/indents_screen.dart';
 
 /// Builds the app's [GoRouter], re-evaluating auth redirects on state change.
 final routerProvider = Provider<GoRouter>((ref) {
@@ -94,6 +95,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const DoRegisterScreen()),
           GoRoute(path: '/users', builder: (_, __) => const UsersScreen()),
           GoRoute(path: '/indent', builder: (_, __) => const IndentScreen()),
+          GoRoute(path: '/indents', builder: (_, __) => const IndentsScreen()),
         ],
       ),
     ],
