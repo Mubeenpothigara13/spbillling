@@ -1,7 +1,6 @@
 // Admin "DO Sales" screen — the sale lines Distributor Outlets have
-// recorded. A DO doesn't bill: S.P. Gas turns each customer's pending lines
-// (same customer + same day) into a bill via "Create bill", which opens
-// New Bill pre-filled.
+// recorded. A DO doesn't bill: "Create bill" turns a customer's pending
+// lines for that day into one bill and takes you to the Bills page.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +11,6 @@ import '../../core/format/inr.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
-import '../../data/models/bill.dart';
 import '../../data/models/distributor_outlet.dart';
 import '../../data/models/do_sale.dart';
 import '../../data/repositories/do_sale_repo.dart';
@@ -47,41 +45,21 @@ class _DoSalesScreenState extends ConsumerState<DoSalesScreen> {
 
   void _reload() => setState(() => _future = _fetch());
 
-  /// Opens New Bill with every pending line of this sale's customer on the
-  /// same day (lines with the same product and rate are merged).
+  /// Bills this customer's pending sales for that day in one go, then shows
+  /// the Bills page with the new bill on it.
   Future<void> _createBill(DoSale sale) async {
     setState(() => _busy = true);
     try {
-      final lines = await ref.read(doSaleRepoProvider).list(
-            status: 'pending',
-            customerId: sale.customerId,
-            fromDate: sale.saleDate,
-            toDate: sale.saleDate,
-            perPage: 200,
-          );
-      final customer = await ref.read(customerRepoProvider).get(sale.customerId);
-      final merged = <String, BillItemDraft>{};
-      for (final l in lines.items) {
-        final d = merged.putIfAbsent(
-          '${l.variantId}|${l.rate}',
-          () => BillItemDraft(
-            variantId: l.variantId,
-            variantLabel: l.variantName,
-            quantity: 0,
-            rate: l.rate,
-            gstRate: l.gstRate,
-          ),
-        );
-        d.quantity += l.quantity;
-        d.emptyReturned += l.emptyReturned;
-      }
-      ref.read(pendingDoBillProvider.notifier).state = DoBillPrefill(
-        customer: customer,
-        billDate: sale.saleDate,
-        items: merged.values.toList(),
-        doSaleIds: [for (final l in lines.items) l.id],
-      );
-      if (mounted) context.go('/bills/new');
+      final number = await ref
+          .read(doSaleRepoProvider)
+          .createBill(customerId: sale.customerId, saleDate: sale.saleDate);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Bill $number created'),
+        backgroundColor: DT.ok600,
+        duration: const Duration(seconds: 3),
+      ));
+      context.go('/bills');
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);

@@ -181,6 +181,51 @@ def create_bill(db: Session, payload: BillCreate, user_id: int, user: Optional[U
     return bill
 
 
+def bill_do_sales(db: Session, user: User, customer_id: int, sale_date: date) -> Bill:
+    """Bill every pending DO sale of one customer on one day: a cash bill,
+    fully paid, with same-product/same-rate lines merged. S.P. Gas only."""
+    if user.do_id is not None:
+        raise HTTPException(status_code=403, detail="Only S.P. Gas can bill DO sales")
+    lines = list(db.scalars(
+        select(DoSale)
+        .where(
+            DoSale.customer_id == customer_id,
+            DoSale.sale_date == sale_date,
+            DoSale.bill_id.is_(None),
+        )
+        .order_by(DoSale.id)
+    ).unique())
+    if not lines:
+        raise HTTPException(
+            status_code=400, detail="No pending sales for this customer on that date"
+        )
+
+    merged: dict[tuple, list[int]] = {}  # (variant, rate, gst) -> [qty, empty returned]
+    total = Decimal("0")
+    for l in lines:
+        acc = merged.setdefault((l.product_variant_id, l.rate, l.gst_rate), [0, 0])
+        acc[0] += l.quantity
+        acc[1] += l.empty_returned
+        total += (l.rate * l.quantity).quantize(TWO)
+    items = [
+        BillItemCreate(
+            product_variant_id=variant_id, quantity=qty, rate=rate,
+            empty_returned=empty, gst_rate=gst,
+        )
+        for (variant_id, rate, gst), (qty, empty) in merged.items()
+    ]
+
+    payload = BillCreate(
+        customer_id=customer_id,
+        bill_date=sale_date,
+        items=items,
+        payment_mode=PaymentMode.CASH,
+        amount_paid=total,
+        do_sale_ids=[l.id for l in lines],
+    )
+    return create_bill(db, payload, user.id, user=user)
+
+
 def get_bill(db: Session, bill_id: int, user: Optional[User] = None) -> Bill:
     bill = db.scalar(
         select(Bill).options(selectinload(Bill.items)).where(Bill.id == bill_id)

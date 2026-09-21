@@ -65,6 +65,19 @@ class DoSaleRepo {
     );
   }
 
+  /// Bills one customer's pending sales for a day (S.P. Gas only). Returns
+  /// the new bill number.
+  Future<String> createBill({
+    required int customerId,
+    required DateTime saleDate,
+  }) async {
+    final data = await _api.request('POST', '/do-sales/bill', data: {
+      'customer_id': customerId,
+      'sale_date': _d(saleDate),
+    });
+    return (data as Map)['bill_number'] as String;
+  }
+
   Future<DoSaleSummary> summary({DateTime? fromDate, DateTime? toDate}) async {
     final data = await _api.request('GET', '/do-sales/summary', query: {
       if (fromDate != null) 'from': _d(fromDate),

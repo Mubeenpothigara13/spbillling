@@ -18,6 +18,11 @@ class DoSaleCreate(BaseModel):
     lines: list[DoSaleLineIn] = Field(..., min_length=1)
 
 
+class DoSaleBillRequest(BaseModel):
+    customer_id: int
+    sale_date: date
+
+
 class DoSaleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
