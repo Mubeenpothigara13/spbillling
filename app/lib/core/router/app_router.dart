@@ -24,7 +24,8 @@ import '../../features/bills/bill_pdf_screen.dart';
 import '../../features/bills/bills_batch_pdf_screen.dart';
 import '../../features/bills/bills_screen.dart';
 import '../../features/registers/daily_register_screen.dart';
-import '../../features/registers/do_register_screen.dart';
+import '../../features/registers/do_report_screen.dart';
+import '../../features/dosales/do_sales_screen.dart';
 import '../../features/users/users_screen.dart';
 import '../../features/indent/indent_screen.dart';
 import '../../features/indents/indents_screen.dart';
@@ -92,10 +93,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const DailyRegisterScreen()),
           GoRoute(
               path: '/register/do',
-              builder: (_, __) => const DoRegisterScreen()),
+              builder: (_, __) => const DoReportEntryScreen()),
           GoRoute(path: '/users', builder: (_, __) => const UsersScreen()),
           GoRoute(path: '/indent', builder: (_, __) => const IndentScreen()),
           GoRoute(path: '/indents', builder: (_, __) => const IndentsScreen()),
+          GoRoute(path: '/do-sales', builder: (_, __) => const DoSalesScreen()),
         ],
       ),
     ],

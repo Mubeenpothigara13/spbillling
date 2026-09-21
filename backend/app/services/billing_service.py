@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 from openpyxl import load_workbook
-from sqlalchemy import Integer, and_, delete, func, or_, select
+from sqlalchemy import Integer, and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.config.settings import settings
@@ -13,11 +13,13 @@ from app.models.audit import AuditAction
 from app.models.bill import Bill, BillItem, BillStatus, PaymentMode
 from app.models.cheque import Cheque, ChequeStatus
 from app.models.customer import Customer
+from app.models.do_sale import DoSale
 from app.models.empty_bottle import EmptyBottleTransaction, EmptyBottleTxnType
 from app.models.payment import Payment
 from app.models.product import Product, ProductVariant
 from app.models.user import User
 from app.schemas.bill import BillCreate, BillItemCreate, BillUpdate
+from app.services import do_sale_service
 from app.utils.audit import write_audit
 from app.utils.scope import enforce_do_scope
 
@@ -74,6 +76,8 @@ def create_bill(db: Session, payload: BillCreate, user_id: int, user: Optional[U
         raise HTTPException(status_code=400, detail="Customer not found")
     if user is not None:
         enforce_do_scope(user, customer.do_id)
+    if payload.do_sale_ids and user is not None and user.do_id is not None:
+        raise HTTPException(status_code=403, detail="Only S.P. Gas can bill DO sales")
 
     bill_date = payload.bill_date or date.today()
 
@@ -134,6 +138,9 @@ def create_bill(db: Session, payload: BillCreate, user_id: int, user: Optional[U
     bill.items = bill_items
     db.add(bill)
     db.flush()
+
+    if payload.do_sale_ids:
+        do_sale_service.link_to_bill(db, payload.do_sale_ids, bill)
 
     # update customer balance
     customer.current_balance = (customer.current_balance + balance_due).quantize(TWO)
@@ -274,6 +281,8 @@ def cancel_bill(db: Session, bill_id: int, user_id: int) -> Bill:
         raise HTTPException(status_code=400, detail="Bill already cancelled")
 
     customer = db.get(Customer, bill.customer_id)
+    # A cancelled bill no longer settles the DO sales it billed — they go back to pending.
+    db.execute(update(DoSale).where(DoSale.bill_id == bill.id).values(bill_id=None))
     # reverse balance
     customer.current_balance = (customer.current_balance - bill.balance_due).quantize(TWO)
 
