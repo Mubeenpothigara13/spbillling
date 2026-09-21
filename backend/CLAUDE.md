@@ -97,6 +97,14 @@ is a deliberate simplicity trade-off, not an oversight.
 | GET | `/api/bills/customer/{id}/ledger` | Full customer account ledger | any |
 | POST | `/api/bills/reset` | Wipe every bill company-wide, restart numbering | **global admin** |
 
+### Indents · `routers/indents.py` → `services/indent_service.py`
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | `/api/indents/summary` | Per size (4/12/15/21 kg): Stock = cylinders sold (all time, DO-scoped) + Rate = first active variant of that size | any |
+| GET | `/api/indents?do_id=` | Submitted indents, newest first (DO-scoped logins only see their own) | any |
+| GET | `/api/indents/{id}` | Detail with per-size items — 404 for another DO's indent | any |
+| POST | `/api/indents` | Submit an indent (DO-scoped login only). Server recomputes stock/rate/amount; `filled` ≤ stock, `paid` ≤ total, at least one filled/empty | staff+ |
+
 ### Payments · `routers/payments.py` → `services/payment_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
@@ -144,6 +152,7 @@ is a deliberate simplicity trade-off, not an oversight.
 | `customer_service.py` | CRUD · Excel import/export · `(mobile, village)` uniqueness |
 | `product_service.py` | Category / product / variant CRUD · stock |
 | `billing_service.py` | `_fy_prefix()`, `_next_bill_number()`, `create_bill()`, `cancel_bill()`, `customer_ledger()` — FY numbering, empty tracking, stock, customer-balance cascade |
+| `indent_service.py` | `size_summary()` (stock from `report_service.product_wise_sales`, rate from active variants), `create_indent()` — server-side validation of filled ≤ stock / paid ≤ total |
 | `payment_service.py` | Payments CRUD · cheque status transitions → payment + customer balance |
 | `pdf_service.py` | `render_bill_pdf()` · `render_bills_9up_pdf()` (3×3 A4 grid) |
 | `report_service.py` | All `/reports/*` aggregations |
@@ -151,12 +160,12 @@ is a deliberate simplicity trade-off, not an oversight.
 
 ---
 
-## 4. Models / Tables (12)
+## 4. Models / Tables (14)
 
 | Model file | Table(s) | Key constraints |
 |---|---|---|
 | `user.py` | `users` | UK(username), UK(email), IX(role, is_active) |
-| `customer.py` | `customers` | **UK(mobile, village)**, UK(customer_code), IX(status, is_deleted), IX(mobile, is_deleted) |
+| `customer.py` | `customers` | UK(consumer_number) WHERE NOT is_deleted, IX(status, is_deleted), IX(mobile, is_deleted) |
 | `product.py` | `product_categories`, `products`, `product_variants` | UK(category.name), UK(variant.sku_code), variants cascade-delete with product |
 | `bill.py` | `bills`, `bill_items` | UK(bill_number), IX(customer_id, bill_date), IX(bill_date, status); items → bill CASCADE, → variant RESTRICT |
 | `payment.py` | `payments` | UK(payment_number), IX(customer_id, payment_date) |
@@ -164,7 +173,8 @@ is a deliberate simplicity trade-off, not an oversight.
 | `empty_bottle.py` | `empty_bottle_transactions` | FK → customer CASCADE, IX(customer_id, created_at) |
 | `audit.py` | `audit_logs` | IX(entity_type, entity_id, created_at), IX(user_id, created_at) |
 | `setting.py` | `settings` | UK(key) |
-| `distributor_outlet.py` | `distributor_outlets` | UK(code), IX(is_active, is_deleted) |
+| `distributor_outlet.py` | `distributor_outlets` | UK(code) WHERE NOT is_deleted, IX(is_active, is_deleted) |
+| `indent.py` | `indents`, `indent_items` | indents: FK do_id RESTRICT, IX(do_id, indent_date); items → indent CASCADE |
 
 ---
 

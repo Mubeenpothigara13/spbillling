@@ -6,7 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config.settings import settings
 from app.routers import (
-    auth, audit, bills, cheques, customers, distributor_outlets, payments,
+    auth, audit, bills, cheques, customers, distributor_outlets, indents, payments,
     products, reports, settings as settings_router, users,
 )
 
@@ -51,6 +51,7 @@ api_routers = [
     users.router,
     customers.router,
     distributor_outlets.router,
+    indents.router,
     products.router,
     bills.router,
     payments.router,

@@ -10,6 +10,7 @@ import '../data/repositories/auth_repo.dart';
 import '../data/repositories/bill_repo.dart';
 import '../data/repositories/customer_repo.dart';
 import '../data/repositories/do_repo.dart';
+import '../data/repositories/indent_repo.dart';
 import '../data/repositories/product_repo.dart';
 import '../data/repositories/report_repo.dart';
 import '../data/repositories/user_repo.dart';
@@ -29,6 +30,8 @@ final customerRepoProvider = Provider<CustomerRepo>((ref) => CustomerRepo(ref.wa
 final productRepoProvider = Provider<ProductRepo>((ref) => ProductRepo(ref.watch(apiClientProvider)));
 final billRepoProvider = Provider<BillRepo>((ref) => BillRepo(ref.watch(apiClientProvider)));
 final doRepoProvider = Provider<DORepo>((ref) => DORepo(ref.watch(apiClientProvider)));
+final indentRepoProvider =
+    Provider<IndentRepo>((ref) => IndentRepo(ref.watch(apiClientProvider)));
 final reportRepoProvider =
     Provider<ReportRepo>((ref) => ReportRepo(ref.watch(apiClientProvider)));
 final userRepoProvider = Provider<UserRepo>((ref) => UserRepo(ref.watch(apiClientProvider)));
