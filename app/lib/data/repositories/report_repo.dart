@@ -63,11 +63,49 @@ class DoRegisterRow {
       );
 }
 
+class ProductSaleRow {
+  final int variantId;
+  final String variantName;
+  final int qtySold;
+  final double totalAmount;
+
+  ProductSaleRow({
+    required this.variantId,
+    required this.variantName,
+    required this.qtySold,
+    required this.totalAmount,
+  });
+
+  factory ProductSaleRow.fromJson(Map<String, dynamic> j) => ProductSaleRow(
+        variantId: (j['variant_id'] as num).toInt(),
+        variantName: j['variant_name'] as String? ?? '',
+        qtySold: (j['qty_sold'] as num?)?.toInt() ?? 0,
+        totalAmount: double.tryParse('${j['total_amount'] ?? 0}') ?? 0.0,
+      );
+}
+
 class ReportRepo {
   final ApiClient _api;
   ReportRepo(this._api);
 
   String _d(DateTime v) => v.toIso8601String().split('T').first;
+
+  /// Quantity + revenue sold per variant in the range. Server-side scoped to
+  /// the caller's own outlet for a DO-scoped login.
+  Future<List<ProductSaleRow>> productSales({
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    final data = await _api.request(
+      'GET',
+      '/reports/product-sales',
+      query: {'from': _d(fromDate), 'to': _d(toDate)},
+    );
+    final rows = (data as Map)['rows'] as List;
+    return rows
+        .map((e) => ProductSaleRow.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 
   /// One row per day in the range (date, bill# from, bill# to, qty, total).
   Future<List<DailyRegisterRow>> dailyRegister({

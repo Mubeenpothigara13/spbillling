@@ -19,7 +19,7 @@ class _NavEntry {
   const _NavEntry(this.title, this.icon, this.path);
 }
 
-const _entries = [
+const _globalEntries = [
   _NavEntry('Dashboard', Icons.dashboard_outlined, '/dashboard'),
   _NavEntry('Customers', Icons.people_outline, '/customers'),
   _NavEntry('Distributor Outlets', Icons.store_outlined, '/outlets'),
@@ -31,6 +31,30 @@ const _entries = [
   _NavEntry('Users', Icons.manage_accounts_outlined, '/users'),
 ];
 
+// A DO-scoped login gets a deliberately short sidebar — just the handful
+// of screens an outlet actually needs day to day. Paths reuse the same
+// screens as the global nav (already DO-scoped server-side); only the
+// label changes to match how the outlet thinks about the task.
+const _doEntries = [
+  _NavEntry('Dashboard', Icons.dashboard_outlined, '/dashboard'),
+  _NavEntry('Add Customer', Icons.person_add_outlined, '/customers'),
+  _NavEntry('Sale', Icons.point_of_sale_outlined, '/bills/new'),
+  _NavEntry('Indent', Icons.inventory_outlined, '/indent'),
+  _NavEntry("DO's Report", Icons.assignment_outlined, '/register/do'),
+];
+
+/// Picks the sidebar entry set for the current login: the short DO list
+/// for a DO-scoped login, or the full list (minus Users/Outlets unless
+/// this is S.P. Gas itself) otherwise.
+List<_NavEntry> _entriesFor(AuthState auth) {
+  if (auth.doCode != null) return _doEntries;
+  final isGlobalAdmin = auth.role == 'admin';
+  const globalOnlyPaths = {'/users', '/outlets'};
+  return _globalEntries
+      .where((e) => !globalOnlyPaths.contains(e.path) || isGlobalAdmin)
+      .toList();
+}
+
 /// Frames the current page with the persistent sidebar and top bar.
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -38,11 +62,13 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authControllerProvider);
+    final entries = _entriesFor(auth);
     final path = GoRouterState.of(context).uri.path;
     // Match by longest prefix so `/bills/new` picks "New Bill" over "Bills".
-    final matches = _entries.where((e) => path == e.path || path.startsWith('${e.path}/'));
+    final matches = entries.where((e) => path == e.path || path.startsWith('${e.path}/'));
     final current = matches.isEmpty
-        ? _entries.first
+        ? entries.first
         : matches.reduce((a, b) => a.path.length >= b.path.length ? a : b);
     return Scaffold(
       body: Row(
@@ -67,11 +93,11 @@ class AppShell extends ConsumerWidget {
 ///
 /// Needed because `/bills/new` would otherwise also light up the `/bills`
 /// entry — we only highlight the longest prefix.
-bool _isActive(String entryPath, String currentPath) {
+bool _isActive(String entryPath, String currentPath, List<_NavEntry> entries) {
   if (currentPath == entryPath) return true;
   if (!currentPath.startsWith('${entryPath}/')) return false;
   // Only mark active if no longer entry matches.
-  for (final other in _entries) {
+  for (final other in entries) {
     if (other.path == entryPath) continue;
     if (other.path.length > entryPath.length &&
         (currentPath == other.path ||
@@ -89,14 +115,7 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
-    // Users and Distributor-Outlets management are S.P. Gas only — hide
-    // those nav entries for a DO-scoped login rather than let them land on
-    // a screen that just says "no" (or, for outlets, only ever shows itself).
-    final isGlobalAdmin = auth.role == 'admin' && auth.doCode == null;
-    const globalOnlyPaths = {'/users', '/outlets'};
-    final visibleEntries = _entries
-        .where((e) => !globalOnlyPaths.contains(e.path) || isGlobalAdmin)
-        .toList();
+    final visibleEntries = _entriesFor(auth);
     return Container(
       width: DT.sidebarWidth,
       decoration: const BoxDecoration(
@@ -138,7 +157,7 @@ class _Sidebar extends ConsumerWidget {
           const Divider(height: 1, color: DT.divider),
           const SizedBox(height: DT.s8),
           for (final e in visibleEntries)
-            _NavTile(entry: e, active: _isActive(e.path, currentPath)),
+            _NavTile(entry: e, active: _isActive(e.path, currentPath, visibleEntries)),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.all(DT.s12),
