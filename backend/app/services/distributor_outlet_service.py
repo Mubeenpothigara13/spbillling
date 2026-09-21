@@ -143,8 +143,20 @@ def soft_delete_do(db: Session, do_id: int, user_id: int) -> None:
         )
     do.is_deleted = True
     do.is_active = False
+
+    # A deleted outlet's login(s) must die with it — otherwise the
+    # auto-provisioned credential (see _create_do_login) still authenticates
+    # against a DO that no longer exists anywhere in the UI.
+    orphaned_logins = list(db.scalars(
+        select(User).where(User.do_id == do.id, User.is_active.is_(True))
+    ))
+    for u in orphaned_logins:
+        u.is_active = False
+
     write_audit(db, entity_type="distributor_outlet", entity_id=do.id,
-                action=AuditAction.DELETE, user_id=user_id)
+                action=AuditAction.DELETE, user_id=user_id,
+                changes={"deactivated_logins": [u.username for u in orphaned_logins]}
+                if orphaned_logins else None)
     db.commit()
 
 

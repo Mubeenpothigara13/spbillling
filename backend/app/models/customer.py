@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Date, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint,
+    Boolean, Date, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,7 +26,11 @@ class Customer(Base, TimestampMixin):
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    consumer_number: Mapped[Optional[str]] = mapped_column(String(32), unique=True, nullable=True, index=True)
+    # Not DB-unique on its own — delete is soft (is_deleted=True), so a
+    # deleted customer's row (and its consumer_number) stays forever.
+    # Uniqueness only applies among live rows, via the partial index below
+    # (see __table_args__) — same bug shape as distributor_outlets.code.
+    consumer_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
     do_id: Mapped[int] = mapped_column(
         ForeignKey("distributor_outlets.id", ondelete="RESTRICT"),
@@ -83,4 +87,6 @@ class Customer(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_customers_status_deleted", "status", "is_deleted"),
         Index("ix_customers_mobile_deleted", "mobile", "is_deleted"),
+        Index("uq_customers_consumer_number_active", "consumer_number", unique=True,
+              postgresql_where=text("NOT is_deleted")),
     )

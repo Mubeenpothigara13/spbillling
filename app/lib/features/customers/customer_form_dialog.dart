@@ -14,6 +14,7 @@ import '../../core/providers.dart';
 import '../../core/theme/design_tokens.dart';
 import '../../data/models/customer.dart';
 import '../../data/models/distributor_outlet.dart';
+import '../auth/auth_controller.dart';
 
 /// Dialog widget — `showDialog<Customer?>` returns the saved row, or null
 /// if the user cancelled.
@@ -51,9 +52,18 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
   bool _saving = false;
   String? _error;
 
+  // A DO-scoped login always creates customers under its own outlet — no
+  // picker needed, and the Add-customer form is trimmed down to the four
+  // fields an outlet actually fills in day to day.
+  late final bool _isDoScoped;
+  late final int? _ownDoId;
+
   @override
   void initState() {
     super.initState();
+    final auth = ref.read(authControllerProvider);
+    _isDoScoped = auth.doCode != null;
+    _ownDoId = auth.doId;
     final e = widget.existing;
     _consumerNumber = TextEditingController(text: e?.consumerNumber ?? '');
     _name = TextEditingController(text: e?.name ?? widget.prefillName ?? '');
@@ -94,7 +104,8 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedDO == null) {
+    final doId = _isDoScoped ? _ownDoId : _selectedDO?.id;
+    if (doId == null) {
       setState(() => _error = 'Please select a distributor outlet (DO)');
       return;
     }
@@ -108,7 +119,7 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
       final mobileInput = _mobile.text.trim();
       final body = {
         if (consumerInput.isNotEmpty) 'consumer_number': consumerInput,
-        'do_id': _selectedDO!.id,
+        'do_id': doId,
         'name': _name.text.trim(),
         // Mobile is optional now — only send when the user actually typed
         // something so the backend stores NULL/empty otherwise.
@@ -167,81 +178,103 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
                     ),
                     const SizedBox(height: DT.s12),
                   ],
-                  _row([
-                    _field(_name, 'Name *', validator: _required),
-                    _field(_mobile, 'Mobile',
-                        // Optional. Only validate format if user typed something.
-                        validator: (v) {
-                          final t = (v ?? '').trim();
-                          if (t.isEmpty) return null;
-                          if (!RegExp(r'^[0-9]+$').hasMatch(t)) {
-                            return 'Digits only';
-                          }
-                          if (t.length < 10) return 'Min 10 digits';
-                          return null;
-                        }),
-                  ]),
-                  _row([
-                    _field(_altMobile, 'Alt mobile'),
-                    _field(_consumerNumber, 'Consumer Number'),
-                  ]),
-                  const SizedBox(height: DT.s8),
-                  DOTypeahead(
-                    initial: _selectedDO,
-                    onChanged: (v) => setState(() => _selectedDO = v),
-                  ),
-                  const SizedBox(height: DT.s8),
-                  _row([
-                    _field(_city, 'City'),
-                  ]),
-                  _row([
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _district,
-                      decoration: const InputDecoration(labelText: 'District'),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'SABARKANTHA', child: Text('SABARKANTHA')),
-                        DropdownMenuItem(
-                            value: 'ARAVALLI', child: Text('ARAVALLI')),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _district = v ?? 'SABARKANTHA'),
+                  if (_isDoScoped) ...[
+                    // Trimmed-down form for a DO login: the outlet is
+                    // implicit (its own), so only the fields it actually
+                    // fills in day to day are shown.
+                    _row([
+                      _field(_consumerNumber, 'Customer ID'),
+                      _field(_name, 'Name *', validator: _required),
+                    ]),
+                    _row([
+                      _field(_mobile, 'Mobile number', validator: (v) {
+                        final t = (v ?? '').trim();
+                        if (t.isEmpty) return null;
+                        if (!RegExp(r'^[0-9]+$').hasMatch(t)) {
+                          return 'Digits only';
+                        }
+                        if (t.length < 10) return 'Min 10 digits';
+                        return null;
+                      }),
+                    ]),
+                    _field(_address, 'Address', maxLines: 2),
+                  ] else ...[
+                    _row([
+                      _field(_name, 'Name *', validator: _required),
+                      _field(_mobile, 'Mobile',
+                          // Optional. Only validate format if user typed something.
+                          validator: (v) {
+                            final t = (v ?? '').trim();
+                            if (t.isEmpty) return null;
+                            if (!RegExp(r'^[0-9]+$').hasMatch(t)) {
+                              return 'Digits only';
+                            }
+                            if (t.length < 10) return 'Min 10 digits';
+                            return null;
+                          }),
+                    ]),
+                    _row([
+                      _field(_altMobile, 'Alt mobile'),
+                      _field(_consumerNumber, 'Consumer Number'),
+                    ]),
+                    const SizedBox(height: DT.s8),
+                    DOTypeahead(
+                      initial: _selectedDO,
+                      onChanged: (v) => setState(() => _selectedDO = v),
                     ),
-                    _field(_state, 'State'),
-                  ]),
-                  _row([
-                    _field(_pincode, 'Pincode'),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _type,
-                      decoration: const InputDecoration(labelText: 'Type'),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'domestic', child: Text('Domestic')),
-                        DropdownMenuItem(
-                            value: 'commercial', child: Text('Commercial')),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _type = v ?? 'domestic'),
-                    ),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _status,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'active', child: Text('Active')),
-                        DropdownMenuItem(
-                            value: 'inactive', child: Text('Inactive')),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _status = v ?? 'active'),
-                    ),
-                  ]),
-                  _field(_address, 'Full address', maxLines: 2),
-                  const SizedBox(height: DT.s8),
-                  _field(_notes, 'Notes', maxLines: 2),
+                    const SizedBox(height: DT.s8),
+                    _row([
+                      _field(_city, 'City'),
+                    ]),
+                    _row([
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _district,
+                        decoration: const InputDecoration(labelText: 'District'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'SABARKANTHA', child: Text('SABARKANTHA')),
+                          DropdownMenuItem(
+                              value: 'ARAVALLI', child: Text('ARAVALLI')),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _district = v ?? 'SABARKANTHA'),
+                      ),
+                      _field(_state, 'State'),
+                    ]),
+                    _row([
+                      _field(_pincode, 'Pincode'),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _type,
+                        decoration: const InputDecoration(labelText: 'Type'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'domestic', child: Text('Domestic')),
+                          DropdownMenuItem(
+                              value: 'commercial', child: Text('Commercial')),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _type = v ?? 'domestic'),
+                      ),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _status,
+                        decoration: const InputDecoration(labelText: 'Status'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'active', child: Text('Active')),
+                          DropdownMenuItem(
+                              value: 'inactive', child: Text('Inactive')),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _status = v ?? 'active'),
+                      ),
+                    ]),
+                    _field(_address, 'Full address', maxLines: 2),
+                    const SizedBox(height: DT.s8),
+                    _field(_notes, 'Notes', maxLines: 2),
+                  ],
                   const SizedBox(height: DT.s20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
