@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditAction
@@ -34,13 +34,26 @@ def _size_of(variant_name: str) -> Optional[int]:
 
 def size_summary(db: Session, do_id: Optional[int]) -> list[IndentSizeRow]:
     """Per size: Stock = cylinders this outlet has recorded as sold on the
-    Sale screen (all time), Rate = unit price of the first active variant of
-    that size (0 when the catalog has no such product)."""
+    Sale screen (all time) minus what earlier indents already took as
+    filled, Rate = unit price of the first active variant of that size
+    (0 when the catalog has no such product)."""
     sold = {kg: 0 for kg in SIZES_KG}
     for name, qty in do_sale_service.quantities_by_variant_name(db, do_id):
         kg = _size_of(name)
         if kg is not None:
             sold[kg] += qty
+
+    indented = {kg: 0 for kg in SIZES_KG}
+    used = (
+        select(IndentItem.size_kg, func.sum(IndentItem.filled))
+        .join(Indent, Indent.id == IndentItem.indent_id)
+        .group_by(IndentItem.size_kg)
+    )
+    if do_id is not None:
+        used = used.where(Indent.do_id == do_id)
+    for kg, qty in db.execute(used):
+        if kg in indented:
+            indented[kg] = int(qty or 0)
 
     rate: dict[int, Decimal] = {}
     for v in db.scalars(
@@ -51,7 +64,11 @@ def size_summary(db: Session, do_id: Optional[int]) -> list[IndentSizeRow]:
             rate[kg] = v.unit_price
 
     return [
-        IndentSizeRow(size_kg=kg, stock=sold[kg], rate=rate.get(kg, Decimal("0")))
+        IndentSizeRow(
+            size_kg=kg,
+            stock=max(0, sold[kg] - indented[kg]),
+            rate=rate.get(kg, Decimal("0")),
+        )
         for kg in SIZES_KG
     ]
 

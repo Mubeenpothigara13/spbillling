@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/format/inr.dart';
 import '../../core/providers.dart';
@@ -48,23 +47,10 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
   bool _saving = false;
   String? _error;
   String _nextBillNumber = '';
-  // DO sale lines this bill settles (set when S.P. Gas bills a DO's sales).
-  List<int> _doSaleIds = [];
 
   @override
   void initState() {
     super.initState();
-    final prefill = ref.read(pendingDoBillProvider);
-    if (prefill != null) {
-      final c = prefill.customer;
-      _selectedCustomer = c;
-      _searchCtrl.text =
-          '${c.name}${c.village?.isNotEmpty == true ? ' — ${c.village}' : ''}';
-      _billDate = prefill.billDate;
-      _items.addAll(prefill.items);
-      _doSaleIds = prefill.doSaleIds;
-      Future.microtask(() => ref.read(pendingDoBillProvider.notifier).state = null);
-    }
     _loadVariants();
     _refreshNextBillNumber();
     HardwareKeyboard.instance.addHandler(_handleGlobalKey);
@@ -121,8 +107,7 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
         _loadingVariants = false;
         // If the user already has rows queued, refresh their rate/gst/label
         // from the latest variant data so price edits in /products show up.
-        // Not for a DO's sales — those keep the rate the DO recorded.
-        for (final item in _doSaleIds.isEmpty ? _items : <BillItemDraft>[]) {
+        for (final item in _items) {
           final fresh = list.where((v) => v.id == item.variantId);
           if (fresh.isNotEmpty) {
             final v = fresh.first;
@@ -346,7 +331,6 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
                 ? null
                 : _notesCtrl.text.trim(),
             chequeDetails: cheque,
-            doSaleIds: _doSaleIds,
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -357,12 +341,6 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
         ),
       );
       _saving = false;
-      if (_doSaleIds.isNotEmpty) {
-        // Back to the DO Sales list, which now shows these as billed.
-        _doSaleIds = [];
-        context.go('/do-sales');
-        return;
-      }
       _resetForNextBill();
     } catch (e) {
       setState(() {
@@ -421,20 +399,6 @@ class _NewBillScreenState extends ConsumerState<NewBillScreen> {
   Widget _leftCol() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_doSaleIds.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(DT.s12),
-              decoration: BoxDecoration(
-                color: DT.brand50,
-                borderRadius: BorderRadius.circular(DT.rSm),
-              ),
-              child: const Text(
-                'Billing sales recorded by a DO — saving this bill marks them as billed.',
-                style: TextStyle(color: DT.brand800, fontSize: DT.fsSm),
-              ),
-            ),
-            const SizedBox(height: DT.s16),
-          ],
           _card('Customer', _customerSection()),
           const SizedBox(height: DT.s16),
           _card('Items', _itemsSection()),

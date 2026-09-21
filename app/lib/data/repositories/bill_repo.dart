@@ -30,7 +30,6 @@ class BillRepo {
     required String paymentMode,
     String? notes,
     Map<String, dynamic>? chequeDetails,
-    List<int>? doSaleIds,
   }) async {
     final body = {
       'customer_id': customerId,
@@ -40,7 +39,6 @@ class BillRepo {
       'payment_mode': paymentMode,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (chequeDetails != null) 'cheque_details': chequeDetails,
-      if (doSaleIds != null && doSaleIds.isNotEmpty) 'do_sale_ids': doSaleIds,
       'items': items.map((i) => i.toJson()).toList(),
     };
     final data = await _api.request('POST', '/bills', data: body);

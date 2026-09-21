@@ -98,9 +98,10 @@ is a deliberate simplicity trade-off, not an oversight.
 | POST | `/api/bills/reset` | Wipe every bill company-wide, restart numbering | **global admin** |
 
 ### DO Sales · `routers/do_sales.py` → `services/do_sale_service.py`
-A DO does **not** bill. It records sale lines here; S.P. Gas bills them (`POST /api/bills` with `do_sale_ids`, which marks the lines billed in the same transaction — must be the same customer, still pending, and only a global login may send it). Deleting or cancelling that bill puts the lines back to pending.
+A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `POST /api/do-sales/bill` (one customer + one day → one cash, fully-paid bill, same product/rate lines merged; global login only). Internally that is `POST /api/bills` with `do_sale_ids`, which marks the lines billed in the same transaction. Deleting or cancelling the bill puts the lines back to pending.
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| POST | `/api/do-sales/bill` | Bill a customer's pending lines for `sale_date` → returns the bill | staff+ (global only) |
 | POST | `/api/do-sales` | Record lines `{customer_id, product_variant_id, quantity, rate?, empty_returned}` for a day. DO-scoped login only; customer must belong to that DO | staff+ |
 | GET | `/api/do-sales?status=pending\|billed\|all&from=&to=&do_id=&customer_id=` | Lines with customer, product, bill # — DO-scoped logins only see their own | any |
 | GET | `/api/do-sales/summary?from=&to=` | Total qty, distinct customers, qty per product (DO's Report header) | any |
@@ -108,7 +109,7 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them (`POST /
 ### Indents · `routers/indents.py` → `services/indent_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | `/api/indents/summary` | Per size (4/12/15/21 kg): Stock = cylinders the DO recorded as sold in DO Sales (all time) + Rate = first active variant of that size | any |
+| GET | `/api/indents/summary` | Per size (4/12/15/21 kg): Stock = cylinders the DO recorded as sold in DO Sales (all time) minus the Filled of its earlier indents + Rate = first active variant of that size | any |
 | GET | `/api/indents?do_id=` | Submitted indents, newest first (DO-scoped logins only see their own) | any |
 | GET | `/api/indents/{id}` | Detail with per-size items — 404 for another DO's indent | any |
 | POST | `/api/indents` | Submit an indent (DO-scoped login only). Server recomputes stock/rate/amount; `filled` ≤ stock, `paid` ≤ total, at least one filled/empty | staff+ |

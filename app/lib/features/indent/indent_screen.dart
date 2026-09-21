@@ -42,7 +42,7 @@ class IndentScreen extends ConsumerStatefulWidget {
 }
 
 class _IndentScreenState extends ConsumerState<IndentScreen> {
-  late final Future<List<IndentSize>> _sizes =ref.read(indentRepoProvider).summary();
+  late Future<List<IndentSize>> _sizes = ref.read(indentRepoProvider).summary();
   final Map<int, TextEditingController> _filled = {};
   final Map<int, TextEditingController> _empty = {};
   final _paid = TextEditingController();
@@ -61,6 +61,9 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
   }
 
   int _n(TextEditingController c) => int.tryParse(c.text) ?? 0;
+
+  /// Stock still left after the Filled typed for this size.
+  int _left(IndentSize s) => s.stock - _n(_ctrl(_filled, s.sizeKg));
 
   double _amount(IndentSize s) => _n(_ctrl(_filled, s.sizeKg)) * s.rate;
 
@@ -86,6 +89,8 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
         for (final c in [..._filled.values, ..._empty.values, _paid]) {
           c.clear();
         }
+        // Stock now excludes what this indent took as filled.
+        _sizes = ref.read(indentRepoProvider).summary();
       });
     } catch (e) {
       if (!mounted) return;
@@ -146,7 +151,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
   }
 
   Widget _content(List<IndentSize> sizes) {
-    final totalStock = sizes.fold<int>(0, (s, x) => s + x.stock);
+    final totalStock = sizes.fold<int>(0, (s, x) => s + _left(x));
     final totalFilled = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_filled, x.sizeKg)));
     final totalEmpty = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_empty, x.sizeKg)));
     final totalAmount = sizes.fold<double>(0, (s, x) => s + _amount(x));
@@ -200,7 +205,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                             ),
                           ],
                         )),
-                        DataCell(Text('${s.stock}',
+                        DataCell(Text('${_left(s)}',
                             style: AppTheme.mono(size: 13, weight: FontWeight.w600))),
                         DataCell(_numField(_ctrl(_filled, s.sizeKg), max: s.stock, kg: s.sizeKg)),
                         DataCell(_numField(_ctrl(_empty, s.sizeKg))),

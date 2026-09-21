@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.user import User
 from app.schemas.common import APIResponse, PaginatedResponse
-from app.schemas.do_sale import DoSaleCreate, DoSaleRead, DoSaleSummary
+from app.schemas.bill import BillOut
+from app.schemas.do_sale import DoSaleBillRequest, DoSaleCreate, DoSaleRead, DoSaleSummary
+from app.services import billing_service
 from app.services import do_sale_service as svc
 from app.utils.auth import get_current_user, require_staff
 from app.utils.pagination import paginate
@@ -62,3 +64,13 @@ def create_sales(
         data=[DoSaleRead.model_validate(r) for r in rows],
         message=f"{len(rows)} sale(s) recorded",
     )
+
+
+@router.post("/bill", response_model=APIResponse[BillOut])
+def bill_sales(
+    payload: DoSaleBillRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_staff),
+):
+    bill = billing_service.bill_do_sales(db, user, payload.customer_id, payload.sale_date)
+    return APIResponse(data=BillOut.model_validate(bill), message=f"Bill {bill.bill_number} created")

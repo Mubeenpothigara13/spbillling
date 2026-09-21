@@ -1,7 +1,4 @@
 // DO sale models — mirror `/api/do-sales`.
-import 'bill.dart';
-import 'customer.dart';
-
 double _asDouble(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
@@ -102,20 +99,4 @@ class DoSaleSummary {
                 ))
             .toList(),
       );
-}
-
-/// What the admin's New Bill screen opens with when billing a DO's sales:
-/// the customer, the lines to bill, and the DO sale ids the saved bill will
-/// settle.
-class DoBillPrefill {
-  final Customer customer;
-  final DateTime billDate;
-  final List<BillItemDraft> items;
-  final List<int> doSaleIds;
-  DoBillPrefill({
-    required this.customer,
-    required this.billDate,
-    required this.items,
-    required this.doSaleIds,
-  });
 }
