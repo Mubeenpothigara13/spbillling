@@ -18,13 +18,19 @@ import '../../data/models/indent.dart';
 /// server would refuse can't be typed in the first place.
 class _CapFormatter extends TextInputFormatter {
   final int max;
-  _CapFormatter(this.max);
+  final VoidCallback onExceed;
+  _CapFormatter(this.max, this.onExceed);
 
   @override
   TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue next) {
     if (next.text.isEmpty) return next;
     final v = int.tryParse(next.text);
-    return (v == null || v > max) ? old : next;
+    if (v == null) return old;
+    if (v > max) {
+      onExceed();
+      return old;
+    }
+    return next;
   }
 }
 
@@ -90,8 +96,18 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
     }
   }
 
+  void _tooMany(int kg, int stock) {
+    final m = ScaffoldMessenger.of(context);
+    m.clearSnackBars();
+    m.showSnackBar(SnackBar(
+      content: Text('$kg kg: Filled cylinders cannot be more than stock ($stock)'),
+      backgroundColor: DT.err700,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
   Widget _numField(TextEditingController c,
-          {int? max, bool decimal = false, String? errorText}) =>
+          {int? max, int kg = 0, bool decimal = false}) =>
       SizedBox(
         width: 110,
         child: TextField(
@@ -101,14 +117,11 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
           keyboardType: TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(decimal ? r'[0-9.]' : r'[0-9]')),
-            if (max != null) _CapFormatter(max),
+            if (max != null) _CapFormatter(max, () => _tooMany(kg, max)),
           ],
           style: AppTheme.mono(size: 13),
           onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: max == null ? '0' : '0–$max',
-            errorText: errorText,
-          ),
+          decoration: const InputDecoration(hintText: '0'),
         ),
       );
 
@@ -189,7 +202,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                         )),
                         DataCell(Text('${s.stock}',
                             style: AppTheme.mono(size: 13, weight: FontWeight.w600))),
-                        DataCell(_numField(_ctrl(_filled, s.sizeKg), max: s.stock)),
+                        DataCell(_numField(_ctrl(_filled, s.sizeKg), max: s.stock, kg: s.sizeKg)),
                         DataCell(_numField(_ctrl(_empty, s.sizeKg))),
                         DataCell(Text(fmtINR(_amount(s)),
                             style: AppTheme.mono(size: 13, weight: FontWeight.w600))),

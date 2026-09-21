@@ -9,6 +9,7 @@ from app.models.empty_bottle import EmptyBottleTransaction, EmptyBottleTxnType
 from app.models.audit import AuditLog, AuditAction
 from app.models.setting import Setting
 from app.models.indent import Indent, IndentItem
+from app.models.do_sale import DoSale
 
 __all__ = [
     "Base",
@@ -22,4 +23,5 @@ __all__ = [
     "AuditLog", "AuditAction",
     "Setting",
     "Indent", "IndentItem",
+    "DoSale",
 ]

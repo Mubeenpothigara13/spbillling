@@ -9,7 +9,9 @@ import 'auth/auth_storage.dart';
 import '../data/repositories/auth_repo.dart';
 import '../data/repositories/bill_repo.dart';
 import '../data/repositories/customer_repo.dart';
+import '../data/models/do_sale.dart';
 import '../data/repositories/do_repo.dart';
+import '../data/repositories/do_sale_repo.dart';
 import '../data/repositories/indent_repo.dart';
 import '../data/repositories/product_repo.dart';
 import '../data/repositories/report_repo.dart';
@@ -30,6 +32,8 @@ final customerRepoProvider = Provider<CustomerRepo>((ref) => CustomerRepo(ref.wa
 final productRepoProvider = Provider<ProductRepo>((ref) => ProductRepo(ref.watch(apiClientProvider)));
 final billRepoProvider = Provider<BillRepo>((ref) => BillRepo(ref.watch(apiClientProvider)));
 final doRepoProvider = Provider<DORepo>((ref) => DORepo(ref.watch(apiClientProvider)));
+final doSaleRepoProvider =
+    Provider<DoSaleRepo>((ref) => DoSaleRepo(ref.watch(apiClientProvider)));
 final indentRepoProvider =
     Provider<IndentRepo>((ref) => IndentRepo(ref.watch(apiClientProvider)));
 final reportRepoProvider =
@@ -39,3 +43,7 @@ final userRepoProvider = Provider<UserRepo>((ref) => UserRepo(ref.watch(apiClien
 /// Bumped by Products screen on any product/variant save/delete; watched by
 /// NewBill screen to know when to reload its cached variants list.
 final productCatalogVersionProvider = StateProvider<int>((ref) => 0);
+
+/// Set by the admin DO Sales screen right before it opens New Bill, so the
+/// bill starts filled in with that DO sale's customer and lines.
+final pendingDoBillProvider = StateProvider<DoBillPrefill?>((ref) => null);

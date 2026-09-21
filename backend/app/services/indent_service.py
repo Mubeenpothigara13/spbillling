@@ -1,5 +1,5 @@
 import re
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 
@@ -12,7 +12,7 @@ from app.models.indent import Indent, IndentItem
 from app.models.product import ProductVariant
 from app.models.user import User
 from app.schemas.indent import IndentCreate, IndentSizeRow
-from app.services import report_service
+from app.services import do_sale_service
 from app.utils.audit import write_audit
 
 # Cylinder sizes an indent is raised for, in display order.
@@ -33,17 +33,14 @@ def _size_of(variant_name: str) -> Optional[int]:
 
 
 def size_summary(db: Session, do_id: Optional[int]) -> list[IndentSizeRow]:
-    """Per size: Stock = cylinders sold so far by this outlet (all time,
-    cancelled bills excluded), Rate = unit price of the first active variant
-    of that size (0 when the catalog has no such product)."""
+    """Per size: Stock = cylinders this outlet has recorded as sold on the
+    Sale screen (all time), Rate = unit price of the first active variant of
+    that size (0 when the catalog has no such product)."""
     sold = {kg: 0 for kg in SIZES_KG}
-    report = report_service.product_wise_sales(
-        db, date(2000, 1, 1), date.today() + timedelta(days=1), do_id=do_id
-    )
-    for row in report.rows:
-        kg = _size_of(row.variant_name)
+    for name, qty in do_sale_service.quantities_by_variant_name(db, do_id):
+        kg = _size_of(name)
         if kg is not None:
-            sold[kg] += row.qty_sold
+            sold[kg] += qty
 
     rate: dict[int, Decimal] = {}
     for v in db.scalars(

@@ -32,6 +32,8 @@ class BillCreate(BaseModel):
     amount_paid: Decimal = Decimal("0")
     cheque_details: Optional[ChequeDetails] = None
     notes: Optional[str] = None
+    # Pending DO sale lines this bill settles (S.P. Gas billing a DO's sales).
+    do_sale_ids: list[int] = []
 
 
 class BillUpdate(BaseModel):

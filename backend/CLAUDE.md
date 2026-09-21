@@ -97,10 +97,18 @@ is a deliberate simplicity trade-off, not an oversight.
 | GET | `/api/bills/customer/{id}/ledger` | Full customer account ledger | any |
 | POST | `/api/bills/reset` | Wipe every bill company-wide, restart numbering | **global admin** |
 
+### DO Sales · `routers/do_sales.py` → `services/do_sale_service.py`
+A DO does **not** bill. It records sale lines here; S.P. Gas bills them (`POST /api/bills` with `do_sale_ids`, which marks the lines billed in the same transaction — must be the same customer, still pending, and only a global login may send it). Deleting or cancelling that bill puts the lines back to pending.
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| POST | `/api/do-sales` | Record lines `{customer_id, product_variant_id, quantity, rate?, empty_returned}` for a day. DO-scoped login only; customer must belong to that DO | staff+ |
+| GET | `/api/do-sales?status=pending\|billed\|all&from=&to=&do_id=&customer_id=` | Lines with customer, product, bill # — DO-scoped logins only see their own | any |
+| GET | `/api/do-sales/summary?from=&to=` | Total qty, distinct customers, qty per product (DO's Report header) | any |
+
 ### Indents · `routers/indents.py` → `services/indent_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | `/api/indents/summary` | Per size (4/12/15/21 kg): Stock = cylinders sold (all time, DO-scoped) + Rate = first active variant of that size | any |
+| GET | `/api/indents/summary` | Per size (4/12/15/21 kg): Stock = cylinders the DO recorded as sold in DO Sales (all time) + Rate = first active variant of that size | any |
 | GET | `/api/indents?do_id=` | Submitted indents, newest first (DO-scoped logins only see their own) | any |
 | GET | `/api/indents/{id}` | Detail with per-size items — 404 for another DO's indent | any |
 | POST | `/api/indents` | Submit an indent (DO-scoped login only). Server recomputes stock/rate/amount; `filled` ≤ stock, `paid` ≤ total, at least one filled/empty | staff+ |
@@ -152,7 +160,8 @@ is a deliberate simplicity trade-off, not an oversight.
 | `customer_service.py` | CRUD · Excel import/export · `(mobile, village)` uniqueness |
 | `product_service.py` | Category / product / variant CRUD · stock |
 | `billing_service.py` | `_fy_prefix()`, `_next_bill_number()`, `create_bill()`, `cancel_bill()`, `customer_ledger()` — FY numbering, empty tracking, stock, customer-balance cascade |
-| `indent_service.py` | `size_summary()` (stock from `report_service.product_wise_sales`, rate from active variants), `create_indent()` — server-side validation of filled ≤ stock / paid ≤ total |
+| `do_sale_service.py` | `create_sales()`, `list_sales()`, `summary()`, `link_to_bill()` (used by `billing_service.create_bill`) |
+| `indent_service.py` | `size_summary()` (stock from `do_sale_service.quantities_by_variant_name`, rate from active variants), `create_indent()` — server-side validation of filled ≤ stock / paid ≤ total |
 | `payment_service.py` | Payments CRUD · cheque status transitions → payment + customer balance |
 | `pdf_service.py` | `render_bill_pdf()` · `render_bills_9up_pdf()` (3×3 A4 grid) |
 | `report_service.py` | All `/reports/*` aggregations |
@@ -160,7 +169,7 @@ is a deliberate simplicity trade-off, not an oversight.
 
 ---
 
-## 4. Models / Tables (14)
+## 4. Models / Tables (15)
 
 | Model file | Table(s) | Key constraints |
 |---|---|---|
@@ -174,6 +183,7 @@ is a deliberate simplicity trade-off, not an oversight.
 | `audit.py` | `audit_logs` | IX(entity_type, entity_id, created_at), IX(user_id, created_at) |
 | `setting.py` | `settings` | UK(key) |
 | `distributor_outlet.py` | `distributor_outlets` | UK(code) WHERE NOT is_deleted, IX(is_active, is_deleted) |
+| `do_sale.py` | `do_sales` | FK bill_id SET NULL (NULL = pending), IX(do_id, sale_date) |
 | `indent.py` | `indents`, `indent_items` | indents: FK do_id RESTRICT, IX(do_id, indent_date); items → indent CASCADE |
 
 ---

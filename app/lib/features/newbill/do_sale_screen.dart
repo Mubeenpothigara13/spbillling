@@ -1,15 +1,16 @@
 // Sale screen for a DO-scoped login.
 //
-// One row per sale (customer + variant + qty + rate). Any number of rows
-// can be added and a single Save at the bottom writes them all — rows that
-// share a customer are merged into one bill. No summary rail, no GST
-// field: the variant's own GST rate is still sent so bill accounting stays
-// correct. S.P. Gas (global login) keeps the full [NewBillScreen].
+// One row per sale (customer + product + qty + rate). Any number of rows
+// can be added and a single Save at the bottom records them all. A DO does
+// not make bills: each row is stored as a DO sale, which S.P. Gas later
+// turns into a bill. No summary rail, no GST field. S.P. Gas (global
+// login) keeps the full [NewBillScreen].
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/format/inr.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
@@ -129,9 +130,8 @@ class _DoSaleScreenState extends ConsumerState<DoSaleScreen> {
     if (d != null) setState(() => _saleDate = d);
   }
 
-  /// Validates every row, then creates one cash, fully-paid bill per
-  /// distinct customer. Rows already saved are dropped from the list, so a
-  /// failure part-way leaves only the unsaved rows on screen.
+  /// Validates every row, then records them all in one request (all or
+  /// nothing, so a failure leaves every row on screen to fix and retry).
   Future<void> _save() async {
     if (_rows.isEmpty) {
       setState(() => _error = 'Add at least one sale');
@@ -152,44 +152,37 @@ class _DoSaleScreenState extends ConsumerState<DoSaleScreen> {
       _saving = true;
       _error = null;
     });
-
-    final byCustomer = <int, List<_SaleRow>>{};
-    for (final r in _rows) {
-      byCustomer.putIfAbsent(r.customer!.id, () => []).add(r);
-    }
-    final billNumbers = <String>[];
     try {
-      for (final group in byCustomer.values) {
-        final items = group.map((r) => r.item).toList();
-        final total = items.fold<double>(0, (s, i) => s + i.lineTotal);
-        final bill = await ref.read(billRepoProvider).create(
-              customerId: group.first.customer!.id,
-              billDate: _saleDate,
-              items: items,
-              discount: 0,
-              amountPaid: total,
-              paymentMode: 'cash',
-            );
-        billNumbers.add(bill.billNumber);
-        if (mounted) setState(() => _rows.removeWhere(group.contains));
-      }
+      await ref.read(doSaleRepoProvider).create(
+        saleDate: _saleDate,
+        lines: [
+          for (final r in _rows)
+            {
+              'customer_id': r.customer!.id,
+              'product_variant_id': r.item.variantId,
+              'quantity': r.item.quantity,
+              'rate': r.item.rate,
+              'empty_returned': r.item.emptyReturned,
+            },
+        ],
+      );
       if (!mounted) return;
+      final n = _rows.length;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(billNumbers.length == 1
-            ? 'Bill ${billNumbers.first} saved'
-            : '${billNumbers.length} bills saved'),
+        content: Text(n == 1 ? 'Sale saved' : '$n sales saved'),
         backgroundColor: DT.ok600,
         duration: const Duration(seconds: 3),
       ));
-      setState(() => _saving = false);
+      setState(() {
+        _saving = false;
+        _rows.clear();
+      });
       _addRow();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = billNumbers.isEmpty
-            ? e.toString()
-            : 'Saved ${billNumbers.length} of ${byCustomer.length} — $e';
+        _error = e is ApiError ? e.message : e.toString();
       });
     }
   }
