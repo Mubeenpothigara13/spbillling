@@ -1,7 +1,12 @@
 from datetime import date
+from decimal import Decimal
+from io import BytesIO
 from typing import Optional
 
 from fastapi import HTTPException
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from reportlab.lib.units import mm
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -12,6 +17,10 @@ from app.models.do_sale import DoSale
 from app.models.product import ProductVariant
 from app.models.user import User
 from app.schemas.do_sale import DoSaleCreate, DoSaleSummary, DoSaleVariantTotal
+from app.services.report_service import (
+    _HEADER_FILL, _HEADER_FONT, _autofit, _fmt_date_str, _header_block,
+    _make_table, _new_doc, _subtitle_para,
+)
 from app.utils.audit import write_audit
 
 
@@ -139,3 +148,79 @@ def link_to_bill(db: Session, sale_ids: list[int], bill: Bill) -> None:
                 status_code=400, detail="A DO sale belongs to a different customer"
             )
         r.bill_id = bill.id
+
+
+# ---------- DO's Report export (a DO's own sales — no bill numbers) ----------
+
+def _report_rows(db: Session, *, do_id: Optional[int], from_date: date, to_date: date) -> list[DoSale]:
+    return list(db.scalars(
+        select(DoSale)
+        .where(*_conditions(do_id=do_id, from_date=from_date, to_date=to_date))
+        .order_by(DoSale.sale_date.asc(), DoSale.id.asc())
+    ).unique())
+
+
+def report_excel(db: Session, *, do_id: Optional[int], from_date: date, to_date: date) -> bytes:
+    rows = _report_rows(db, do_id=do_id, from_date=from_date, to_date=to_date)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "DO's Report"
+    ws.append([f"DO's Report · {from_date.strftime('%d %b %Y')} → {to_date.strftime('%d %b %Y')}"])
+    ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=6)
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A1"].alignment = Alignment(horizontal="center")
+    headers = ["Date", "Customer", "Mobile", "Product", "Qty", "Status"]
+    ws.append([])
+    ws.append(headers)
+    for cell in ws[3]:
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = Alignment(horizontal="center")
+    total_qty = 0
+    for r in rows:
+        ws.append([
+            r.sale_date.strftime("%Y-%m-%d"), r.customer_name, r.customer_mobile or "-",
+            r.variant_name, r.quantity, "Billed" if r.bill_id else "Pending",
+        ])
+        total_qty += r.quantity
+    ws.append([])
+    ws.append(["TOTAL", "", "", "", total_qty, ""])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+    _autofit(ws)
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def report_pdf(db: Session, *, do_id: Optional[int], from_date: date, to_date: date) -> bytes:
+    rows = _report_rows(db, do_id=do_id, from_date=from_date, to_date=to_date)
+    subtitle = (
+        f"{from_date.strftime('%d %b %Y')} → {to_date.strftime('%d %b %Y')}"
+        f" · {len(rows)} sale{'s' if len(rows) != 1 else ''}"
+    )
+    buf = BytesIO()
+    doc = _new_doc(buf)
+    story: list = _header_block("DO's Report", subtitle)
+    if not rows:
+        story.append(_subtitle_para("No sales in the selected range."))
+        doc.build(story)
+        return buf.getvalue()
+    data = [
+        [_fmt_date_str(r.sale_date.isoformat()), r.customer_name, r.customer_mobile or "-",
+         r.variant_name, str(r.quantity), "Billed" if r.bill_id else "Pending"]
+        for r in rows
+    ]
+    total_qty = sum(r.quantity for r in rows)
+    totals = ["TOTAL", "", "", "", str(total_qty), ""]
+    col_widths = [26 * mm, 34 * mm, 26 * mm, 34 * mm, 16 * mm, 20 * mm]
+    story.append(_make_table(
+        ["Date", "Customer", "Mobile", "Product", "Qty", "Status"],
+        data,
+        col_widths=col_widths,
+        totals=totals,
+        right_align_cols=[4],
+        center_align_cols=[5],
+    ))
+    doc.build(story)
+    return buf.getvalue()

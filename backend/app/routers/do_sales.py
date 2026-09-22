@@ -2,6 +2,7 @@ from datetime import date
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -74,3 +75,31 @@ def bill_sales(
 ):
     bill = billing_service.bill_do_sales(db, user, payload.customer_id, payload.sale_date)
     return APIResponse(data=BillOut.model_validate(bill), message=f"Bill {bill.bill_number} created")
+
+
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/export")
+def export_sales(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    fmt: str = Query("excel", pattern="^(excel|pdf)$"),
+    do_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    scoped_do_id = resolve_do_filter(user, do_id)
+    if fmt == "excel":
+        data = svc.report_excel(db, do_id=scoped_do_id, from_date=from_date, to_date=to_date)
+        return Response(
+            content=data, media_type=_XLSX,
+            headers={"Content-Disposition":
+                     f'attachment; filename="do-report-{from_date}-to-{to_date}.xlsx"'},
+        )
+    data = svc.report_pdf(db, do_id=scoped_do_id, from_date=from_date, to_date=to_date)
+    return Response(
+        content=data, media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'attachment; filename="do-report-{from_date}-to-{to_date}.pdf"'},
+    )
