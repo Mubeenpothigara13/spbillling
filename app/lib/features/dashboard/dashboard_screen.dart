@@ -10,6 +10,7 @@ import '../../core/format/inr.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
+import '../auth/auth_controller.dart';
 
 /// Route `/dashboard`.
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -45,6 +46,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDo = ref.watch(authControllerProvider).doCode != null;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(DT.s24),
       child: Column(
@@ -75,18 +77,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               if (snap.hasError) {
                 return _errorBox(snap.error.toString());
               }
+              // Keys match report_service.dashboard()'s flat dict exactly —
+              // there is no nested "today" object on the wire.
               final data = snap.data ?? const <String, dynamic>{};
-              final today = Map<String, dynamic>.from(
-                  data['today'] as Map? ?? data);
-              final sales = _num(today['sales_total'] ?? data['sales_total']);
-              final cash = _num(today['cash_total'] ?? data['cash_total']);
-              final cyl = _num(today['cylinders_sold'] ??
-                  data['cylinders_sold'] ??
-                  0);
-              final outstanding = _num(data['outstanding_total'] ??
-                  data['outstanding'] ??
-                  today['outstanding'] ??
-                  0);
+              final sales = _num(data['today_sales_total']);
+              final cash = _num(data['today_cash_collected']);
+              final cyl = _num(data['today_cylinders_sold']);
+              final outstanding = _num(data['total_outstanding']);
               return Wrap(
                 spacing: DT.s16,
                 runSpacing: DT.s16,
@@ -141,11 +138,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 icon: const Icon(Icons.person_add_alt, size: 16),
                 label: const Text('Add Customer'),
               ),
-              OutlinedButton.icon(
-                onPressed: () => context.go('/products'),
-                icon: const Icon(Icons.inventory_2_outlined, size: 16),
-                label: const Text('Manage Products'),
-              ),
+              // Products management is S.P. Gas only — not in a DO's own
+              // sidebar, so it shouldn't be a shortcut on a DO's dashboard.
+              if (!isDo)
+                OutlinedButton.icon(
+                  onPressed: () => context.go('/products'),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 16),
+                  label: const Text('Manage Products'),
+                ),
             ],
           ),
         ],
