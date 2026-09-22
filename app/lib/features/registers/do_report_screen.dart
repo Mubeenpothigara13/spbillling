@@ -1,11 +1,14 @@
 // "DO's Report" for a DO-scoped login: how many cylinders it sold and to
 // whom — every sale with its date, customer and product, plus whether S.P.
 // Gas has billed it yet. S.P. Gas (global login) keeps the DO Register.
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/io/web_download.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/design_tokens.dart';
@@ -35,6 +38,7 @@ class DoReportScreen extends ConsumerStatefulWidget {
 }
 
 class _DoReportScreenState extends ConsumerState<DoReportScreen> {
+  bool _exporting = false;
   DateTime _from = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _to = DateTime.now();
   int _page = 1;
@@ -73,6 +77,42 @@ class _DoReportScreenState extends ConsumerState<DoReportScreen> {
 
   String _err(Object? e) => e is ApiError ? e.message : '$e';
 
+  Future<void> _export(String format) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+    try {
+      final bytes = await ref.read(doSaleRepoProvider).exportBytes(
+            fromDate: _from,
+            toDate: _to,
+            format: format,
+          );
+      final from = DateFormat('yyyy-MM-dd').format(_from);
+      final to = DateFormat('yyyy-MM-dd').format(_to);
+      final ext = format == 'excel' ? 'xlsx' : 'pdf';
+      final mime = format == 'excel'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf';
+      await downloadBytes(
+        Uint8List.fromList(bytes), 'do-report-$from-to-$to.$ext', mime,
+      );
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('Downloaded do-report.$ext'),
+        backgroundColor: DT.ok700,
+        duration: const Duration(seconds: 3),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text('Export failed: ${_err(e)}'),
+        backgroundColor: DT.err700,
+        duration: const Duration(seconds: 6),
+      ));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -96,6 +136,18 @@ class _DoReportScreenState extends ConsumerState<DoReportScreen> {
                 icon: const Icon(Icons.calendar_today, size: 14),
                 label: Text(_dateFmt.format(_to)),
                 onPressed: () => _pick(from: false),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.grid_on, size: 14),
+                label: const Text('Excel'),
+                onPressed: _exporting ? null : () => _export('excel'),
+              ),
+              const SizedBox(width: DT.s8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 14),
+                label: const Text('PDF'),
+                onPressed: _exporting ? null : () => _export('pdf'),
               ),
             ],
           ),
@@ -214,7 +266,6 @@ class _DoReportScreenState extends ConsumerState<DoReportScreen> {
           DataColumn(label: Text('Mobile')),
           DataColumn(label: Text('Product')),
           DataColumn(label: Text('Qty'), numeric: true),
-          DataColumn(label: Text('Bill #')),
           DataColumn(label: Text('Status')),
         ],
         rows: [
@@ -228,8 +279,6 @@ class _DoReportScreenState extends ConsumerState<DoReportScreen> {
                   : '—')),
               DataCell(Text(r.variantName)),
               DataCell(Text('${r.quantity}', style: AppTheme.mono(size: 13))),
-              DataCell(Text(r.billNumber ?? '—',
-                  style: AppTheme.mono(size: 12, color: DT.text2))),
               DataCell(_statusChip(r.isBilled)),
             ]),
         ],

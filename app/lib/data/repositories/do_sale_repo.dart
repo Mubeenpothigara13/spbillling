@@ -1,4 +1,6 @@
 // Repository for `/api/do-sales`.
+import 'package:dio/dio.dart';
+
 import '../../core/api/api_client.dart';
 import '../models/do_sale.dart';
 
@@ -84,5 +86,26 @@ class DoSaleRepo {
       if (toDate != null) 'to': _d(toDate),
     });
     return DoSaleSummary.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// DO's Report as Excel or PDF for a date range. `format` is `'excel'` or `'pdf'`.
+  Future<List<int>> exportBytes({
+    required DateTime fromDate,
+    required DateTime toDate,
+    required String format,
+    int? doId,
+  }) async {
+    final bytes = await _api.request(
+      'GET',
+      '/do-sales/export',
+      query: {
+        'from': _d(fromDate),
+        'to': _d(toDate),
+        'fmt': format,
+        if (doId != null) 'do_id': doId,
+      },
+      responseType: ResponseType.bytes,
+    );
+    return List<int>.from(bytes as List);
   }
 }

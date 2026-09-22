@@ -104,6 +104,7 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | POST | `/api/do-sales/bill` | Bill a customer's pending lines for `sale_date` → returns the bill | staff+ (global only) |
 | POST | `/api/do-sales` | Record lines `{customer_id, product_variant_id, quantity, rate?, empty_returned}` for a day. DO-scoped login only; customer must belong to that DO | staff+ |
 | GET | `/api/do-sales?status=pending\|billed\|all&from=&to=&do_id=&customer_id=` | Lines with customer, product, bill # — DO-scoped logins only see their own | any |
+| GET | `/api/do-sales/export?from=&to=&fmt=excel\|pdf&do_id=` | DO's Report as a file — same rows as the list, no bill numbers | any |
 | GET | `/api/do-sales/summary?from=&to=` | Total qty, distinct customers, qty per product (DO's Report header) | any |
 
 ### Indents · `routers/indents.py` → `services/indent_service.py`
