@@ -291,7 +291,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       columns: const [
                         DataColumn(label: Text('Product')),
                         DataColumn(label: Text('Variant')),
-                        DataColumn(label: Text('Price'), numeric: true),
+                        DataColumn(label: Text('Price (Customer)'), numeric: true),
+                        DataColumn(label: Text('Price (DO)'), numeric: true),
                         DataColumn(label: Text('GST %'), numeric: true),
                         DataColumn(label: Text('HSN')),
                         DataColumn(label: Text('Status')),
@@ -303,6 +304,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                             DataCell(Text(v.productName ?? '—')),
                             DataCell(Text(v.name)),
                             DataCell(Text(fmtINR(v.unitPrice),
+                                style: AppTheme.mono(size: 12))),
+                            DataCell(Text(fmtINR(v.costPrice),
                                 style: AppTheme.mono(size: 12))),
                             DataCell(Text(v.gstRate.toStringAsFixed(1),
                                 style: AppTheme.mono(size: 12))),
@@ -416,6 +419,7 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
   final _productName = TextEditingController();
   late final TextEditingController _variantName;
   late final TextEditingController _price;
+  late final TextEditingController _costPrice;
   late final TextEditingController _deposit;
   late final TextEditingController _gst;
   late final TextEditingController _hsn;
@@ -431,6 +435,8 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
     final e = widget.existing;
     _variantName = TextEditingController(text: e?.name ?? '');
     _price = TextEditingController(text: e?.unitPrice.toStringAsFixed(2) ?? '');
+    _costPrice =
+        TextEditingController(text: e?.costPrice.toStringAsFixed(2) ?? '0');
     _deposit = TextEditingController(
         text: e?.depositAmount.toStringAsFixed(2) ?? '0');
     _gst =
@@ -448,7 +454,7 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
 
   @override
   void dispose() {
-    for (final c in [_productName, _variantName, _price, _deposit, _gst, _hsn, _sku]) {
+    for (final c in [_productName, _variantName, _price, _costPrice, _deposit, _gst, _hsn, _sku]) {
       c.dispose();
     }
     super.dispose();
@@ -467,6 +473,7 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
           'name': _variantName.text.trim(),
           if (_sku.text.trim().isNotEmpty) 'sku_code': _sku.text.trim(),
           'unit_price': double.tryParse(_price.text) ?? 0,
+          'cost_price': double.tryParse(_costPrice.text) ?? 0,
           'deposit_amount': double.tryParse(_deposit.text) ?? 0,
           'gst_rate': double.tryParse(_gst.text) ?? 0,
         });
@@ -488,6 +495,7 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
           'name': _variantName.text.trim(),
           if (_sku.text.trim().isNotEmpty) 'sku_code': _sku.text.trim(),
           'unit_price': double.tryParse(_price.text) ?? 0,
+          'cost_price': double.tryParse(_costPrice.text) ?? 0,
           'deposit_amount': double.tryParse(_deposit.text) ?? 0,
           'gst_rate': double.tryParse(_gst.text) ?? 0,
           'is_active': true,
@@ -581,8 +589,8 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
                         child: TextFormField(
                           controller: _price,
                           keyboardType: TextInputType.number,
-                          decoration:
-                              const InputDecoration(labelText: 'Price *'),
+                          decoration: const InputDecoration(
+                              labelText: 'Price to Customer *'),
                           validator: (v) =>
                               (double.tryParse(v ?? '') == null)
                                   ? 'Invalid'
@@ -592,12 +600,32 @@ class _VariantFormDialogState extends ConsumerState<_VariantFormDialog> {
                       const SizedBox(width: DT.s12),
                       Expanded(
                         child: TextFormField(
+                          controller: _costPrice,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Price to DO',
+                              helperText: 'DO ka indent rate'),
+                          validator: (v) =>
+                              (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                                  ? 'Invalid'
+                                  : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: DT.s8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
                           controller: _deposit,
                           keyboardType: TextInputType.number,
                           decoration:
                               const InputDecoration(labelText: 'Deposit'),
                         ),
                       ),
+                      const SizedBox(width: DT.s12),
+                      const Expanded(child: SizedBox.shrink()),
                     ],
                   ),
                   const SizedBox(height: DT.s8),

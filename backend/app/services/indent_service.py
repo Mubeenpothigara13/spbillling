@@ -58,13 +58,15 @@ def size_summary(db: Session, do_id: Optional[int]) -> list[IndentSizeRow]:
         if kg in indented:
             indented[kg] = int(qty or 0)
 
+    # Indent rate is the DO's cost price (what it pays S.P. Gas), never the
+    # customer-facing unit_price — those two are deliberately different.
     rate: dict[int, Decimal] = {}
     for v in db.scalars(
         select(ProductVariant).where(ProductVariant.is_active.is_(True)).order_by(ProductVariant.id)
     ):
         kg = _size_of(v.name)
         if kg is not None and kg not in rate:
-            rate[kg] = v.unit_price
+            rate[kg] = v.cost_price
 
     return [
         IndentSizeRow(
