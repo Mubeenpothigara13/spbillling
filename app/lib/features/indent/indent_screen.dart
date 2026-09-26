@@ -2,7 +2,8 @@
 //
 // Stock = cylinders of that size this outlet has sold (server-computed).
 // Filled can't exceed Stock; Empty is free. Amount = Filled x rate. Payment
-// is a Paid amount with Baki (balance) worked out below the table.
+// done and Baki are BOTH typed in by the DO (neither auto-fills the other);
+// Submit is blocked unless the two add up to the total amount.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +47,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
   final Map<int, TextEditingController> _filled = {};
   final Map<int, TextEditingController> _empty = {};
   final _paid = TextEditingController();
+  final _baki = TextEditingController();
   bool _saving = false;
   String? _error;
 
@@ -54,7 +56,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
 
   @override
   void dispose() {
-    for (final c in [..._filled.values, ..._empty.values, _paid]) {
+    for (final c in [..._filled.values, ..._empty.values, _paid, _baki]) {
       c.dispose();
     }
     super.dispose();
@@ -67,9 +69,9 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
 
   double _amount(IndentSize s) => _n(_ctrl(_filled, s.sizeKg)) * s.rate;
 
-  /// Asks the DO to confirm the payment split before actually submitting —
-  /// nothing stops a blank Payment field from meaning "fully unpaid", so
-  /// this is the one checkpoint that catches a forgotten entry.
+  /// Asks the DO to confirm the payment split before actually submitting.
+  /// Reaching here already means Payment done + Baki matched the total, so
+  /// this is a final "sure this is right?" rather than a validation step.
   Future<void> _confirmAndSubmit(
       List<IndentSize> sizes, double totalAmount, double paid, double baki) async {
     if (totalAmount <= 0) {
@@ -86,15 +88,12 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
           children: [
             _confirmRow('Total amount', fmtINR(totalAmount)),
             _confirmRow('Payment done', fmtINR(paid)),
-            const Divider(height: DT.s20),
             _confirmRow('Baki', fmtINR(baki), bold: true,
                 color: baki > 0 ? DT.err700 : DT.ok700),
             const SizedBox(height: DT.s12),
-            Text(
-              paid <= 0
-                  ? 'Payment done abhi 0 hai — kya poora amount baki rakhna hai?'
-                  : 'Yeh sahi hai? Submit ke baad badal nahi sakega.',
-              style: const TextStyle(color: DT.text2, fontSize: DT.fsSm),
+            const Text(
+              'Yeh sahi hai? Submit ke baad badal nahi sakega.',
+              style: TextStyle(color: DT.text2, fontSize: DT.fsSm),
             ),
           ],
         ),
@@ -147,7 +146,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
       ));
       setState(() {
         _saving = false;
-        for (final c in [..._filled.values, ..._empty.values, _paid]) {
+        for (final c in [..._filled.values, ..._empty.values, _paid, _baki]) {
           c.clear();
         }
         // Stock now excludes what this indent took as filled.
@@ -216,13 +215,17 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
     final totalFilled = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_filled, x.sizeKg)));
     final totalEmpty = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_empty, x.sizeKg)));
     final totalAmount = sizes.fold<double>(0, (s, x) => s + _amount(x));
-    // The DO must type this in themselves — it never auto-fills, and an
-    // untouched field blocks Submit rather than silently meaning "unpaid".
+    // Both fields are typed in by the DO — neither auto-fills the other.
+    // Submit is blocked until they add up to the total amount.
     final paidEntered = _paid.text.trim().isNotEmpty;
+    final bakiEntered = _baki.text.trim().isNotEmpty;
     final paid = double.tryParse(_paid.text) ?? 0;
-    final baki = totalAmount - paid;
-    final overpaid = paid > totalAmount;
-    final paidMissing = totalAmount > 0 && !paidEntered;
+    final baki = double.tryParse(_baki.text) ?? 0;
+    final paymentMissing = totalAmount > 0 && (!paidEntered || !bakiEntered);
+    final sumMismatch = totalAmount > 0 &&
+        paidEntered &&
+        bakiEntered &&
+        (paid + baki - totalAmount).abs() > 0.01;
     const bold = TextStyle(fontWeight: FontWeight.w700);
 
     return SingleChildScrollView(
@@ -323,32 +326,40 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
                           labelText: 'Payment done (₹)',
-                          errorText: overpaid
-                              ? 'More than total'
-                              : (paidMissing ? 'Required' : null),
+                          errorText: (totalAmount > 0 && !paidEntered)
+                              ? 'Required'
+                              : null,
                         ),
                       ),
                     ),
                     SizedBox(
                       width: 200,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(labelText: 'Baki (₹)'),
-                        child: Text(
-                          // Blank until the DO actually enters a payment —
-                          // it never auto-computes from Filled on its own.
-                          paidEntered ? fmtINR(overpaid ? 0 : baki) : '—',
-                          style: AppTheme.mono(
-                            size: 13,
-                            weight: FontWeight.w700,
-                            color: paidEntered && !overpaid && baki > 0
-                                ? DT.err700
-                                : DT.ok700,
-                          ),
+                      child: TextField(
+                        controller: _baki,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        style: AppTheme.mono(size: 13),
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          labelText: 'Baki (₹)',
+                          errorText: (totalAmount > 0 && !bakiEntered)
+                              ? 'Required'
+                              : null,
                         ),
                       ),
                     ),
                   ],
                 ),
+                if (sumMismatch) ...[
+                  const SizedBox(height: DT.s8),
+                  Text(
+                    'Payment done + Baki (${fmtINR(paid + baki)}) total amount '
+                    '${fmtINR(totalAmount)} se match nahi karta.',
+                    style: const TextStyle(color: DT.err700, fontSize: DT.fsSm),
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: DT.s12),
                   Container(
@@ -364,7 +375,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                   child: SizedBox(
                     height: 40,
                     child: ElevatedButton.icon(
-                      onPressed: (_saving || overpaid || paidMissing)
+                      onPressed: (_saving || paymentMissing || sumMismatch)
                           ? null
                           : () => _confirmAndSubmit(sizes, totalAmount, paid, baki),
                       icon: _saving
