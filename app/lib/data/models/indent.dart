@@ -61,6 +61,10 @@ class Indent {
   final double totalAmount;
   final double amountPaid;
   final double balance;
+  final String status; // pending | approved | rejected
+  final String? reviewedByName;
+  final DateTime? reviewedAt;
+  final String? reviewNote;
   final List<IndentItem> items;
 
   Indent({
@@ -75,10 +79,17 @@ class Indent {
     required this.totalAmount,
     required this.amountPaid,
     required this.balance,
+    required this.status,
+    this.reviewedByName,
+    this.reviewedAt,
+    this.reviewNote,
     required this.items,
   });
 
   bool get isPaid => balance <= 0;
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isRejected => status == 'rejected';
 
   factory Indent.fromJson(Map<String, dynamic> j) => Indent(
         id: _asInt(j['id']),
@@ -92,6 +103,12 @@ class Indent {
         totalAmount: _asDouble(j['total_amount']),
         amountPaid: _asDouble(j['amount_paid']),
         balance: _asDouble(j['balance']),
+        status: j['status'] as String? ?? 'pending',
+        reviewedByName: j['reviewed_by_name'] as String?,
+        reviewedAt: j['reviewed_at'] == null
+            ? null
+            : DateTime.tryParse(j['reviewed_at'] as String),
+        reviewNote: j['review_note'] as String?,
         items: (j['items'] as List? ?? [])
             .map((e) => IndentItem.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList(),

@@ -8,7 +8,7 @@ from app.models.cheque import Cheque, ChequeStatus
 from app.models.empty_bottle import EmptyBottleTransaction, EmptyBottleTxnType
 from app.models.audit import AuditLog, AuditAction
 from app.models.setting import Setting
-from app.models.indent import Indent, IndentItem
+from app.models.indent import Indent, IndentItem, IndentStatus
 from app.models.do_sale import DoSale
 
 __all__ = [
@@ -22,6 +22,6 @@ __all__ = [
     "EmptyBottleTransaction", "EmptyBottleTxnType",
     "AuditLog", "AuditAction",
     "Setting",
-    "Indent", "IndentItem",
+    "Indent", "IndentItem", "IndentStatus",
     "DoSale",
 ]

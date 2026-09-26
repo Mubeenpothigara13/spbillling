@@ -28,6 +28,7 @@ import '../../features/registers/do_report_screen.dart';
 import '../../features/dosales/do_sales_screen.dart';
 import '../../features/users/users_screen.dart';
 import '../../features/indent/indent_screen.dart';
+import '../../features/indent/indent_history_screen.dart';
 import '../../features/indents/indents_screen.dart';
 
 /// Builds the app's [GoRouter], re-evaluating auth redirects on state change.
@@ -96,6 +97,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const DoReportEntryScreen()),
           GoRoute(path: '/users', builder: (_, __) => const UsersScreen()),
           GoRoute(path: '/indent', builder: (_, __) => const IndentScreen()),
+          GoRoute(path: '/indent-history', builder: (_, __) => const IndentHistoryScreen()),
           GoRoute(path: '/indents', builder: (_, __) => const IndentsScreen()),
           GoRoute(path: '/do-sales', builder: (_, __) => const DoSalesScreen()),
         ],

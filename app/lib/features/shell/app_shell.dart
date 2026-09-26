@@ -42,6 +42,7 @@ const _doEntries = [
   _NavEntry('Add Customer', Icons.person_add_outlined, '/customers'),
   _NavEntry('Sale', Icons.point_of_sale_outlined, '/bills/new'),
   _NavEntry('Indent', Icons.inventory_outlined, '/indent'),
+  _NavEntry('Indent History', Icons.history_outlined, '/indent-history'),
   _NavEntry("DO's Report", Icons.assignment_outlined, '/register/do'),
 ];
 
