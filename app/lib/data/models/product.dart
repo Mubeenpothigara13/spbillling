@@ -35,7 +35,10 @@ class ProductCategory {
 
 /// A sellable SKU — the actual thing that appears on a bill line.
 ///
-/// `unitPrice` is GST-inclusive (see `BillItemDraft` for the math).
+/// `unitPrice` is GST-inclusive (see `BillItemDraft` for the math) — what a
+/// DO charges its customer. `costPrice` is a separate, lower price: what
+/// the DO itself pays S.P. Gas when it indents stock. The two are set
+/// independently and are never derived from each other.
 /// `depositAmount` applies only to returnable items (cylinders).
 class ProductVariant {
   final int id;
@@ -43,6 +46,7 @@ class ProductVariant {
   final String name;
   final String? skuCode;
   final double unitPrice;
+  final double costPrice;
   final double depositAmount;
   final double gstRate;
   final int stockQuantity;
@@ -58,6 +62,7 @@ class ProductVariant {
     required this.name,
     this.skuCode,
     required this.unitPrice,
+    this.costPrice = 0,
     required this.depositAmount,
     required this.gstRate,
     required this.stockQuantity,
@@ -74,6 +79,7 @@ class ProductVariant {
         name: j['name'] as String,
         skuCode: j['sku_code'] as String?,
         unitPrice: _d(j['unit_price']),
+        costPrice: _d(j['cost_price']),
         depositAmount: _d(j['deposit_amount']),
         gstRate: _d(j['gst_rate']),
         stockQuantity: _i(j['stock_quantity']),

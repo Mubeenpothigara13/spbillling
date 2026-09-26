@@ -107,6 +107,8 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | GET | `/api/do-sales/export?from=&to=&fmt=excel\|pdf&do_id=` | DO's Report as a file — same rows as the list, no bill numbers | any |
 | GET | `/api/do-sales/summary?from=&to=` | Total qty, distinct customers, qty per product (DO's Report header) | any |
 
+**Pricing note:** every `ProductVariant` carries two independent prices — `unit_price` (what a DO charges its own customer, used by billing) and `cost_price` (what the DO pays S.P. Gas, used only by Indent rate calculation). Set both in Products; they are never derived from each other.
+
 ### Indents · `routers/indents.py` → `services/indent_service.py`
 | Method | Path | Purpose | Role |
 |---|---|---|---|
@@ -166,7 +168,7 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | `product_service.py` | Category / product / variant CRUD · stock |
 | `billing_service.py` | `_fy_prefix()`, `_next_bill_number()`, `create_bill()`, `cancel_bill()`, `customer_ledger()` — FY numbering, empty tracking, stock, customer-balance cascade |
 | `do_sale_service.py` | `create_sales()`, `list_sales()`, `summary()`, `link_to_bill()` (used by `billing_service.create_bill`) |
-| `indent_service.py` | `size_summary()` (stock = sold via `do_sale_service.quantities_by_variant_name` minus non-rejected indents' filled, rate from active variants), `create_indent()`, `update_indent()`, `approve_indent()`, `reject_indent()` |
+| `indent_service.py` | `size_summary()` (stock = sold via `do_sale_service.quantities_by_variant_name` minus non-rejected indents' filled, rate = variant's **`cost_price`** — never `unit_price`, see note below), `create_indent()`, `update_indent()`, `approve_indent()`, `reject_indent()` |
 | `payment_service.py` | Payments CRUD · cheque status transitions → payment + customer balance |
 | `pdf_service.py` | `render_bill_pdf()` · `render_bills_9up_pdf()` (3×3 A4 grid) |
 | `report_service.py` | All `/reports/*` aggregations |
