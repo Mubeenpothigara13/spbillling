@@ -67,6 +67,67 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
 
   double _amount(IndentSize s) => _n(_ctrl(_filled, s.sizeKg)) * s.rate;
 
+  /// Asks the DO to confirm the payment split before actually submitting —
+  /// nothing stops a blank Payment field from meaning "fully unpaid", so
+  /// this is the one checkpoint that catches a forgotten entry.
+  Future<void> _confirmAndSubmit(
+      List<IndentSize> sizes, double totalAmount, double paid, double baki) async {
+    if (totalAmount <= 0) {
+      _submit(sizes);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Confirm payment'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _confirmRow('Total amount', fmtINR(totalAmount)),
+            _confirmRow('Payment done', fmtINR(paid)),
+            const Divider(height: DT.s20),
+            _confirmRow('Baki', fmtINR(baki), bold: true,
+                color: baki > 0 ? DT.err700 : DT.ok700),
+            const SizedBox(height: DT.s12),
+            Text(
+              paid <= 0
+                  ? 'Payment done abhi 0 hai — kya poora amount baki rakhna hai?'
+                  : 'Yeh sahi hai? Submit ke baad badal nahi sakega.',
+              style: const TextStyle(color: DT.text2, fontSize: DT.fsSm),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Confirm & Submit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) _submit(sizes);
+  }
+
+  Widget _confirmRow(String label, String value, {bool bold = false, Color? color}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(color: DT.text2)),
+            const Spacer(),
+            Text(value,
+                style: AppTheme.mono(
+                    size: 13,
+                    weight: bold ? FontWeight.w700 : FontWeight.w500,
+                    color: color ?? DT.text)),
+          ],
+        ),
+      );
+
   Future<void> _submit(List<IndentSize> sizes) async {
     setState(() {
       _saving = true;
@@ -294,7 +355,9 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                   child: SizedBox(
                     height: 40,
                     child: ElevatedButton.icon(
-                      onPressed: (_saving || overpaid) ? null : () => _submit(sizes),
+                      onPressed: (_saving || overpaid)
+                          ? null
+                          : () => _confirmAndSubmit(sizes, totalAmount, paid, baki),
                       icon: _saving
                           ? const SizedBox(
                               width: 14,
