@@ -18,9 +18,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Stored value must be the enum MEMBER NAME ("PENDING"), matching every
+    # other Enum(..., native_enum=False) column in this codebase (see
+    # BillStatus/CustomerStatus) — not the lowercase .value.
     op.add_column(
         "indents",
-        sa.Column("status", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("status", sa.String(16), nullable=False, server_default="PENDING"),
     )
     op.add_column("indents", sa.Column("reviewed_by_id", sa.Integer(), nullable=True))
     op.add_column("indents", sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True))
