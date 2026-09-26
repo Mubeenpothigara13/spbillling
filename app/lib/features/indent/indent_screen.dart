@@ -216,9 +216,13 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
     final totalFilled = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_filled, x.sizeKg)));
     final totalEmpty = sizes.fold<int>(0, (s, x) => s + _n(_ctrl(_empty, x.sizeKg)));
     final totalAmount = sizes.fold<double>(0, (s, x) => s + _amount(x));
+    // The DO must type this in themselves — it never auto-fills, and an
+    // untouched field blocks Submit rather than silently meaning "unpaid".
+    final paidEntered = _paid.text.trim().isNotEmpty;
     final paid = double.tryParse(_paid.text) ?? 0;
     final baki = totalAmount - paid;
     final overpaid = paid > totalAmount;
+    final paidMissing = totalAmount > 0 && !paidEntered;
     const bold = TextStyle(fontWeight: FontWeight.w700);
 
     return SingleChildScrollView(
@@ -319,8 +323,9 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
                           labelText: 'Payment done (₹)',
-                          hintText: '0',
-                          errorText: overpaid ? 'More than total' : null,
+                          errorText: overpaid
+                              ? 'More than total'
+                              : (paidMissing ? 'Required' : null),
                         ),
                       ),
                     ),
@@ -329,11 +334,15 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                       child: InputDecorator(
                         decoration: const InputDecoration(labelText: 'Baki (₹)'),
                         child: Text(
-                          fmtINR(overpaid ? 0 : baki),
+                          // Blank until the DO actually enters a payment —
+                          // it never auto-computes from Filled on its own.
+                          paidEntered ? fmtINR(overpaid ? 0 : baki) : '—',
                           style: AppTheme.mono(
                             size: 13,
                             weight: FontWeight.w700,
-                            color: (!overpaid && baki > 0) ? DT.err700 : DT.ok700,
+                            color: paidEntered && !overpaid && baki > 0
+                                ? DT.err700
+                                : DT.ok700,
                           ),
                         ),
                       ),
@@ -355,7 +364,7 @@ class _IndentScreenState extends ConsumerState<IndentScreen> {
                   child: SizedBox(
                     height: 40,
                     child: ElevatedButton.icon(
-                      onPressed: (_saving || overpaid)
+                      onPressed: (_saving || overpaid || paidMissing)
                           ? null
                           : () => _confirmAndSubmit(sizes, totalAmount, paid, baki),
                       icon: _saving
