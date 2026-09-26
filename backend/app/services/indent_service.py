@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -8,10 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditAction
-from app.models.indent import Indent, IndentItem
+from app.models.indent import Indent, IndentItem, IndentStatus
 from app.models.product import ProductVariant
 from app.models.user import User
-from app.schemas.indent import IndentCreate, IndentSizeRow
+from app.schemas.indent import IndentCreate, IndentSizeRow, IndentUpdate
 from app.services import do_sale_service
 from app.utils.audit import write_audit
 
@@ -44,9 +44,12 @@ def size_summary(db: Session, do_id: Optional[int]) -> list[IndentSizeRow]:
             sold[kg] += qty
 
     indented = {kg: 0 for kg in SIZES_KG}
+    # A rejected indent's filled doesn't count as consumed — rejecting must
+    # free that stock back up so the DO can correct and resubmit.
     used = (
         select(IndentItem.size_kg, func.sum(IndentItem.filled))
         .join(Indent, Indent.id == IndentItem.indent_id)
+        .where(Indent.status != IndentStatus.REJECTED)
         .group_by(IndentItem.size_kg)
     )
     if do_id is not None:
@@ -148,4 +151,78 @@ def get_indent(db: Session, indent_id: int) -> Indent:
     indent = db.get(Indent, indent_id)
     if not indent:
         raise HTTPException(status_code=404, detail="Indent not found")
+    return indent
+
+
+def update_indent(db: Session, user: User, indent_id: int, payload: IndentUpdate) -> Indent:
+    """Admin correction of a submitted indent's filled/empty/paid amounts.
+    Re-prices each item off its own already-stored rate — never re-fetches
+    the current catalog price, since that could drift from what the DO
+    actually paid at submission time."""
+    indent = get_indent(db, indent_id)
+    items_by_size = {i.size_kg: i for i in indent.items}
+    seen: set[int] = set()
+    for it in payload.items:
+        if it.size_kg not in items_by_size:
+            raise HTTPException(status_code=400, detail=f"{it.size_kg} kg is not on this indent")
+        if it.size_kg in seen:
+            raise HTTPException(status_code=400, detail=f"{it.size_kg} kg listed twice")
+        seen.add(it.size_kg)
+        row = items_by_size[it.size_kg]
+        row.filled = it.filled
+        row.empty = it.empty
+        row.amount = (row.rate * it.filled).quantize(_TWO_PLACES)
+
+    total_filled = sum(i.filled for i in indent.items)
+    total_empty = sum(i.empty for i in indent.items)
+    total_amount = sum((i.amount for i in indent.items), Decimal("0"))
+    paid = payload.amount_paid.quantize(_TWO_PLACES)
+    if paid > total_amount:
+        raise HTTPException(
+            status_code=400, detail="Paid amount cannot be more than the total amount"
+        )
+
+    changes = {
+        "total_filled": [indent.total_filled, total_filled],
+        "total_empty": [indent.total_empty, total_empty],
+        "total_amount": [str(indent.total_amount), str(total_amount)],
+        "amount_paid": [str(indent.amount_paid), str(paid)],
+    }
+    indent.total_filled = total_filled
+    indent.total_empty = total_empty
+    indent.total_amount = total_amount
+    indent.amount_paid = paid
+    indent.balance = total_amount - paid
+
+    write_audit(db, entity_type="indent", entity_id=indent.id,
+                action=AuditAction.UPDATE, user_id=user.id, changes=changes)
+    db.commit()
+    db.refresh(indent)
+    return indent
+
+
+def approve_indent(db: Session, user: User, indent_id: int) -> Indent:
+    indent = get_indent(db, indent_id)
+    indent.status = IndentStatus.APPROVED
+    indent.reviewed_by_id = user.id
+    indent.reviewed_at = datetime.now(timezone.utc)
+    indent.review_note = None
+    write_audit(db, entity_type="indent", entity_id=indent.id,
+                action=AuditAction.UPDATE, user_id=user.id, changes={"status": "approved"})
+    db.commit()
+    db.refresh(indent)
+    return indent
+
+
+def reject_indent(db: Session, user: User, indent_id: int, note: Optional[str]) -> Indent:
+    indent = get_indent(db, indent_id)
+    indent.status = IndentStatus.REJECTED
+    indent.reviewed_by_id = user.id
+    indent.reviewed_at = datetime.now(timezone.utc)
+    indent.review_note = note
+    write_audit(db, entity_type="indent", entity_id=indent.id,
+                action=AuditAction.UPDATE, user_id=user.id,
+                changes={"status": "rejected", "note": note})
+    db.commit()
+    db.refresh(indent)
     return indent

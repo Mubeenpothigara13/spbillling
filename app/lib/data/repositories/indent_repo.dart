@@ -60,4 +60,39 @@ class IndentRepo {
       lastPage: meta['last_page'] as int? ?? 1,
     );
   }
+
+  Future<Indent> get(int id) async {
+    final data = await _api.request('GET', '/indents/$id');
+    return Indent.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// Admin correction — `filled`/`empty` keyed by size in kg, same shape as
+  /// [submit]. Re-prices off each item's own stored rate.
+  Future<Indent> update(
+    int id, {
+    required Map<int, int> filled,
+    required Map<int, int> empty,
+    required double amountPaid,
+  }) async {
+    final data = await _api.request('PUT', '/indents/$id', data: {
+      'items': [
+        for (final kg in filled.keys)
+          {'size_kg': kg, 'filled': filled[kg], 'empty': empty[kg] ?? 0},
+      ],
+      'amount_paid': amountPaid,
+    });
+    return Indent.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<Indent> approve(int id) async {
+    final data = await _api.request('POST', '/indents/$id/approve');
+    return Indent.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<Indent> reject(int id, {String? note}) async {
+    final data = await _api.request('POST', '/indents/$id/reject', data: {
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+    return Indent.fromJson(Map<String, dynamic>.from(data as Map));
+  }
 }

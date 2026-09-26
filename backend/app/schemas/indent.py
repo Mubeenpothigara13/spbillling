@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +14,17 @@ class IndentItemIn(BaseModel):
 class IndentCreate(BaseModel):
     items: list[IndentItemIn] = Field(..., min_length=1)
     amount_paid: Decimal = Field(Decimal("0"), ge=0)
+
+
+class IndentUpdate(BaseModel):
+    """Admin correction — same shape as create, re-priced from the item's
+    own stored rate (not re-fetched from the catalog)."""
+    items: list[IndentItemIn] = Field(..., min_length=1)
+    amount_paid: Decimal = Field(..., ge=0)
+
+
+class IndentReject(BaseModel):
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class IndentSizeRow(BaseModel):
@@ -50,5 +62,9 @@ class IndentRead(BaseModel):
     total_amount: Decimal
     amount_paid: Decimal
     balance: Decimal
+    status: str
+    reviewed_by_name: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
     created_at: datetime
     items: list[IndentItemRead]

@@ -1,12 +1,20 @@
-from datetime import date
+import enum
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric
+from sqlalchemy import DateTime, Date, Enum, ForeignKey, Index, Integer, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 from app.models.distributor_outlet import DistributorOutlet  # noqa: F401 (relationship target)
+from app.models.user import User  # noqa: F401 (relationship target)
+
+
+class IndentStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class Indent(Base, TimestampMixin):
@@ -33,8 +41,23 @@ class Indent(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    status: Mapped[IndentStatus] = mapped_column(
+        Enum(IndentStatus, name="indent_status", native_enum=False, length=16),
+        default=IndentStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+    reviewed_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     distributor_outlet: Mapped["DistributorOutlet"] = relationship(
         "DistributorOutlet", lazy="joined"
+    )
+    reviewer: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[reviewed_by_id], lazy="joined"
     )
     items: Mapped[list["IndentItem"]] = relationship(
         back_populates="indent",
@@ -54,6 +77,10 @@ class Indent(Base, TimestampMixin):
     @property
     def do_name(self) -> str:
         return self.distributor_outlet.owner_name
+
+    @property
+    def reviewed_by_name(self) -> Optional[str]:
+        return self.reviewer.full_name if self.reviewer else None
 
 
 class IndentItem(Base):

@@ -114,6 +114,9 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | GET | `/api/indents?do_id=` | Submitted indents, newest first (DO-scoped logins only see their own) | any |
 | GET | `/api/indents/{id}` | Detail with per-size items — 404 for another DO's indent | any |
 | POST | `/api/indents` | Submit an indent (DO-scoped login only). Server recomputes stock/rate/amount; `filled` ≤ stock, `paid` ≤ total, at least one filled/empty | staff+ |
+| PUT | `/api/indents/{id}` | Admin correction — re-prices off each item's own stored rate (not re-fetched), recomputes totals; `paid` ≤ total | **global admin** |
+| POST | `/api/indents/{id}/approve` | Mark reviewed + approved | **global admin** |
+| POST | `/api/indents/{id}/reject` | Mark reviewed + rejected, optional `note` shown to the DO. A rejected indent's `filled` no longer counts as consumed stock — the DO can correct and resubmit | **global admin** |
 
 ### Payments · `routers/payments.py` → `services/payment_service.py`
 | Method | Path | Purpose | Role |
@@ -163,7 +166,7 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | `product_service.py` | Category / product / variant CRUD · stock |
 | `billing_service.py` | `_fy_prefix()`, `_next_bill_number()`, `create_bill()`, `cancel_bill()`, `customer_ledger()` — FY numbering, empty tracking, stock, customer-balance cascade |
 | `do_sale_service.py` | `create_sales()`, `list_sales()`, `summary()`, `link_to_bill()` (used by `billing_service.create_bill`) |
-| `indent_service.py` | `size_summary()` (stock from `do_sale_service.quantities_by_variant_name`, rate from active variants), `create_indent()` — server-side validation of filled ≤ stock / paid ≤ total |
+| `indent_service.py` | `size_summary()` (stock = sold via `do_sale_service.quantities_by_variant_name` minus non-rejected indents' filled, rate from active variants), `create_indent()`, `update_indent()`, `approve_indent()`, `reject_indent()` |
 | `payment_service.py` | Payments CRUD · cheque status transitions → payment + customer balance |
 | `pdf_service.py` | `render_bill_pdf()` · `render_bills_9up_pdf()` (3×3 A4 grid) |
 | `report_service.py` | All `/reports/*` aggregations |
@@ -186,7 +189,7 @@ A DO does **not** bill. It records sale lines here; S.P. Gas bills them with `PO
 | `setting.py` | `settings` | UK(key) |
 | `distributor_outlet.py` | `distributor_outlets` | UK(code) WHERE NOT is_deleted, IX(is_active, is_deleted) |
 | `do_sale.py` | `do_sales` | FK bill_id SET NULL (NULL = pending), IX(do_id, sale_date) |
-| `indent.py` | `indents`, `indent_items` | indents: FK do_id RESTRICT, IX(do_id, indent_date); items → indent CASCADE |
+| `indent.py` | `indents`, `indent_items` | indents: FK do_id RESTRICT, IX(do_id, indent_date), IX(status); status pending/approved/rejected, reviewed_by_id FK users SET NULL; items → indent CASCADE |
 
 ---
 

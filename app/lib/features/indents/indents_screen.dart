@@ -1,6 +1,7 @@
 // Admin "Indents" screen — every indent the outlets have submitted, newest
-// first, filterable by DO. Click a row for the per-size breakdown.
+// first, filterable by DO. Click a row to Approve, Reject, or Edit it.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -40,10 +41,13 @@ class _IndentsScreenState extends ConsumerState<IndentsScreen> {
 
   void _reload() => setState(() => _future = _fetch());
 
-  void _show(Indent i) => showDialog<void>(
-        context: context,
-        builder: (_) => _IndentDetailDialog(indent: i),
-      );
+  Future<void> _show(Indent i) async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _IndentDetailDialog(indent: i),
+    );
+    if (changed == true) _reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +172,7 @@ class _IndentsScreenState extends ConsumerState<IndentsScreen> {
           DataColumn(label: Text('Amount'), numeric: true),
           DataColumn(label: Text('Paid'), numeric: true),
           DataColumn(label: Text('Payment')),
+          DataColumn(label: Text('Status')),
         ],
         rows: [
           for (final i in rows)
@@ -188,6 +193,7 @@ class _IndentsScreenState extends ConsumerState<IndentsScreen> {
                 DataCell(_num(fmtINR(i.totalAmount))),
                 DataCell(_num(fmtINR(i.amountPaid))),
                 DataCell(_payChip(i)),
+                DataCell(_statusChip(i.status)),
               ],
             ),
         ],
@@ -224,91 +230,308 @@ Widget _payChip(Indent i) => Container(
       ),
     );
 
-class _IndentDetailDialog extends StatelessWidget {
+Widget _statusChip(String status) {
+  final (bg, fg, label) = switch (status) {
+    'approved' => (DT.ok50, DT.ok700, 'Approved'),
+    'rejected' => (DT.err50, DT.err700, 'Rejected'),
+    _ => (DT.warn50, DT.warn700, 'Pending'),
+  };
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: DT.s8, vertical: 2),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(DT.rXs)),
+    child: Text(label,
+        style: TextStyle(color: fg, fontSize: DT.fsSm, fontWeight: FontWeight.w600)),
+  );
+}
+
+class _IndentDetailDialog extends ConsumerStatefulWidget {
   final Indent indent;
   const _IndentDetailDialog({required this.indent});
+
+  @override
+  ConsumerState<_IndentDetailDialog> createState() => _IndentDetailDialogState();
+}
+
+class _IndentDetailDialogState extends ConsumerState<_IndentDetailDialog> {
+  late Indent _indent = widget.indent;
+  bool _editing = false;
+  bool _busy = false;
+  bool _changed = false;
+  String? _error;
+  final Map<int, TextEditingController> _filled = {};
+  final Map<int, TextEditingController> _empty = {};
+  late final TextEditingController _paid =
+      TextEditingController(text: _indent.amountPaid.toStringAsFixed(2));
+
+  TextEditingController _filledCtrl(int kg) => _filled.putIfAbsent(
+      kg,
+      () => TextEditingController(
+          text: _indent.items.firstWhere((i) => i.sizeKg == kg).filled.toString()));
+
+  TextEditingController _emptyCtrl(int kg) => _empty.putIfAbsent(
+      kg,
+      () => TextEditingController(
+          text: _indent.items.firstWhere((i) => i.sizeKg == kg).empty.toString()));
+
+  @override
+  void dispose() {
+    for (final c in [..._filled.values, ..._empty.values, _paid]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  int _n(TextEditingController c) => int.tryParse(c.text) ?? 0;
+
+  double _editedTotal() => _indent.items.fold<double>(
+      0, (s, it) => s + _n(_filledCtrl(it.sizeKg)) * it.rate);
+
+  Future<void> _run(Future<Indent> Function() action) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final updated = await action();
+      if (!mounted) return;
+      setState(() {
+        _indent = updated;
+        _busy = false;
+        _editing = false;
+        _changed = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e is ApiError ? e.message : '$e';
+      });
+    }
+  }
+
+  Future<void> _approve() => _run(() => ref.read(indentRepoProvider).approve(_indent.id));
+
+  Future<void> _reject() async {
+    final noteCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Reject indent?'),
+        content: TextField(
+          controller: noteCtrl,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Reason (optional)',
+            hintText: 'DO ko dikhega ki kyun reject hua',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: DT.err600),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(() =>
+        ref.read(indentRepoProvider).reject(_indent.id, note: noteCtrl.text.trim()));
+  }
+
+  Future<void> _saveEdit() async {
+    final total = _editedTotal();
+    final paid = double.tryParse(_paid.text) ?? 0;
+    if (paid > total) {
+      setState(() => _error = 'Paid amount total se zyada nahi ho sakta');
+      return;
+    }
+    await _run(() => ref.read(indentRepoProvider).update(
+          _indent.id,
+          filled: {for (final it in _indent.items) it.sizeKg: _n(_filledCtrl(it.sizeKg))},
+          empty: {for (final it in _indent.items) it.sizeKg: _n(_emptyCtrl(it.sizeKg))},
+          amountPaid: paid,
+        ));
+  }
 
   @override
   Widget build(BuildContext context) {
     const bold = TextStyle(fontWeight: FontWeight.w700);
     TextStyle mono(bool b) =>
         AppTheme.mono(size: 13, weight: b ? FontWeight.w700 : FontWeight.w500);
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: Padding(
-          padding: const EdgeInsets.all(DT.s20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  _codeChip(indent.doCode),
-                  const SizedBox(width: DT.s8),
-                  Expanded(
-                    child: Text(
-                      '${indent.doName} — ${_dateFmt.format(indent.indentDate)}',
-                      style: Theme.of(context).textTheme.headlineMedium,
+    final i = _indent;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.of(context).pop(_changed);
+      },
+      child: Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Padding(
+            padding: const EdgeInsets.all(DT.s20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    _codeChip(i.doCode),
+                    const SizedBox(width: DT.s8),
+                    Expanded(
+                      child: Text(
+                        '${i.doName} — ${_dateFmt.format(i.indentDate)}',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
                     ),
+                    _statusChip(i.status),
+                    const SizedBox(width: DT.s8),
+                    _payChip(i),
+                  ],
+                ),
+                if (i.reviewedByName != null) ...[
+                  const SizedBox(height: DT.s4),
+                  Text(
+                    '${i.isRejected ? "Rejected" : "Reviewed"} by ${i.reviewedByName}'
+                    '${i.reviewNote?.isNotEmpty == true ? " — ${i.reviewNote}" : ""}',
+                    style: const TextStyle(color: DT.text2, fontSize: DT.fsSm),
                   ),
-                  _payChip(indent),
                 ],
-              ),
-              const SizedBox(height: DT.s16),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowHeight: 40,
-                  dataRowMinHeight: 40,
-                  dataRowMaxHeight: 40,
-                  columns: const [
-                    DataColumn(label: Text('Product')),
-                    DataColumn(label: Text('Stock'), numeric: true),
-                    DataColumn(label: Text('Filled'), numeric: true),
-                    DataColumn(label: Text('Empty'), numeric: true),
-                    DataColumn(label: Text('Rate'), numeric: true),
-                    DataColumn(label: Text('Amount'), numeric: true),
-                  ],
-                  rows: [
-                    for (final it in indent.items)
-                      DataRow(cells: [
-                        DataCell(Text('${it.sizeKg} kg')),
-                        DataCell(Text('${it.stock}', style: mono(false))),
-                        DataCell(Text('${it.filled}', style: mono(false))),
-                        DataCell(Text('${it.empty}', style: mono(false))),
-                        DataCell(Text(fmtINR(it.rate), style: mono(false))),
-                        DataCell(Text(fmtINR(it.amount), style: mono(false))),
+                const SizedBox(height: DT.s16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 44,
+                    dataRowMaxHeight: 44,
+                    columns: const [
+                      DataColumn(label: Text('Product')),
+                      DataColumn(label: Text('Stock'), numeric: true),
+                      DataColumn(label: Text('Filled'), numeric: true),
+                      DataColumn(label: Text('Empty'), numeric: true),
+                      DataColumn(label: Text('Rate'), numeric: true),
+                      DataColumn(label: Text('Amount'), numeric: true),
+                    ],
+                    rows: [
+                      for (final it in i.items)
+                        DataRow(cells: [
+                          DataCell(Text('${it.sizeKg} kg')),
+                          DataCell(Text('${it.stock}', style: mono(false))),
+                          DataCell(_editing
+                              ? _editField(_filledCtrl(it.sizeKg))
+                              : Text('${it.filled}', style: mono(false))),
+                          DataCell(_editing
+                              ? _editField(_emptyCtrl(it.sizeKg))
+                              : Text('${it.empty}', style: mono(false))),
+                          DataCell(Text(fmtINR(it.rate), style: mono(false))),
+                          DataCell(Text(
+                              fmtINR(_editing
+                                  ? _n(_filledCtrl(it.sizeKg)) * it.rate
+                                  : it.amount),
+                              style: mono(false))),
+                        ]),
+                      DataRow(color: WidgetStatePropertyAll(DT.surface2), cells: [
+                        const DataCell(Text('Total', style: bold)),
+                        DataCell(Text('${i.totalStock}', style: mono(true))),
+                        const DataCell(SizedBox.shrink()),
+                        const DataCell(SizedBox.shrink()),
+                        const DataCell(SizedBox.shrink()),
+                        DataCell(Text(
+                            fmtINR(_editing ? _editedTotal() : i.totalAmount),
+                            style: mono(true))),
                       ]),
-                    DataRow(color: WidgetStatePropertyAll(DT.surface2), cells: [
-                      const DataCell(Text('Total', style: bold)),
-                      DataCell(Text('${indent.totalStock}', style: mono(true))),
-                      DataCell(Text('${indent.totalFilled}', style: mono(true))),
-                      DataCell(Text('${indent.totalEmpty}', style: mono(true))),
-                      const DataCell(SizedBox.shrink()),
-                      DataCell(Text(fmtINR(indent.totalAmount), style: mono(true))),
-                    ]),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: DT.s12),
+                if (_editing)
+                  SizedBox(
+                    width: 200,
+                    child: TextField(
+                      controller: _paid,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      style: AppTheme.mono(size: 13),
+                      decoration: const InputDecoration(labelText: 'Payment done (₹)'),
+                    ),
+                  )
+                else ...[
+                  _line('Payment done', fmtINR(i.amountPaid), DT.ok700),
+                  _line('Baki', fmtINR(i.balance), i.isPaid ? DT.ok700 : DT.err700),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: DT.s12),
+                  Container(
+                    padding: const EdgeInsets.all(DT.s8),
+                    color: DT.err50,
+                    child: Text(_error!,
+                        style: const TextStyle(color: DT.err700, fontSize: DT.fsSm)),
+                  ),
+                ],
+                const SizedBox(height: DT.s16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (_editing) ...[
+                      TextButton(
+                        onPressed: _busy ? null : () => setState(() => _editing = false),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: DT.s8),
+                      ElevatedButton(
+                        onPressed: _busy ? null : _saveEdit,
+                        child: const Text('Save'),
+                      ),
+                    ] else ...[
+                      TextButton(
+                        onPressed: () => setState(() => _editing = true),
+                        child: const Text('Edit'),
+                      ),
+                      const SizedBox(width: DT.s8),
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: DT.err600),
+                        onPressed: _busy ? null : _reject,
+                        child: const Text('Reject'),
+                      ),
+                      const SizedBox(width: DT.s8),
+                      ElevatedButton(
+                        onPressed: _busy ? null : _approve,
+                        child: const Text('Approve'),
+                      ),
+                      const SizedBox(width: DT.s8),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(_changed),
+                        child: const Text('Close'),
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              const SizedBox(height: DT.s12),
-              _line('Payment done', fmtINR(indent.amountPaid), DT.ok700),
-              _line('Baki', fmtINR(indent.balance),
-                  indent.isPaid ? DT.ok700 : DT.err700),
-              const SizedBox(height: DT.s16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  Widget _editField(TextEditingController c) => SizedBox(
+        width: 70,
+        child: TextField(
+          controller: c,
+          textAlign: TextAlign.right,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+          style: AppTheme.mono(size: 13),
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
+      );
 
   Widget _line(String label, String value, Color color) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
